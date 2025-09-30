@@ -245,3 +245,163 @@ export const clearAllData = (): void => {
     console.error('Failed to clear all data:', error);
   }
 };
+
+// Export all data as JSON
+export interface AllDataExport {
+  version: string;
+  exportDate: string;
+  books: Book[];
+  readingProgress: ReadingProgress[];
+  favorites: string[];
+  readingStats: ReadingStats;
+  readerSettings: ReaderSettings | null;
+  ttsConfiguration: any; // From ttsConfig.ts
+}
+
+export const exportAllData = (): AllDataExport => {
+  try {
+    // Get TTS configuration from localStorage
+    const ttsConfig = localStorage.getItem('tts_configuration');
+
+    return {
+      version: '1.0',
+      exportDate: new Date().toISOString(),
+      books: getUploadedBooks(),
+      readingProgress: getAllReadingProgress(),
+      favorites: getFavorites(),
+      readingStats: getReadingStats(),
+      readerSettings: getReaderSettings(),
+      ttsConfiguration: ttsConfig ? JSON.parse(ttsConfig) : null,
+    };
+  } catch (error) {
+    console.error('Failed to export all data:', error);
+    throw error;
+  }
+};
+
+// Import all data from JSON
+export const importAllData = (data: AllDataExport, mergeMode: 'replace' | 'merge' = 'merge'): void => {
+  try {
+    if (mergeMode === 'replace') {
+      // Clear existing data first
+      clearAllData();
+    }
+
+    // Import books
+    if (data.books && data.books.length > 0) {
+      if (mergeMode === 'merge') {
+        // Merge: keep existing books, add new ones
+        const existingBooks = getUploadedBooks();
+        const existingIds = new Set(existingBooks.map(b => b.id));
+
+        data.books.forEach(book => {
+          if (!existingIds.has(book.id)) {
+            saveUploadedBook(book);
+          }
+        });
+      } else {
+        // Replace: set all books
+        localStorage.setItem(STORAGE_KEYS.UPLOADED_BOOKS, JSON.stringify(data.books));
+      }
+    }
+
+    // Import reading progress
+    if (data.readingProgress && data.readingProgress.length > 0) {
+      if (mergeMode === 'merge') {
+        data.readingProgress.forEach(progress => {
+          saveReadingProgress(progress);
+        });
+      } else {
+        localStorage.setItem(STORAGE_KEYS.READING_PROGRESS, JSON.stringify(data.readingProgress));
+      }
+    }
+
+    // Import favorites
+    if (data.favorites && data.favorites.length > 0) {
+      if (mergeMode === 'merge') {
+        const existing = getFavorites();
+        const merged = Array.from(new Set([...existing, ...data.favorites]));
+        localStorage.setItem(STORAGE_KEYS.FAVORITES, JSON.stringify(merged));
+      } else {
+        localStorage.setItem(STORAGE_KEYS.FAVORITES, JSON.stringify(data.favorites));
+      }
+    }
+
+    // Import reading stats
+    if (data.readingStats) {
+      if (mergeMode === 'merge') {
+        const existing = getReadingStats();
+        const merged = {
+          totalBooksRead: existing.totalBooksRead + data.readingStats.totalBooksRead,
+          totalTimeRead: existing.totalTimeRead + data.readingStats.totalTimeRead,
+          booksCompleted: Array.from(new Set([...existing.booksCompleted, ...data.readingStats.booksCompleted])),
+          currentStreak: Math.max(existing.currentStreak, data.readingStats.currentStreak),
+          lastReadDate: data.readingStats.lastReadDate > existing.lastReadDate ? data.readingStats.lastReadDate : existing.lastReadDate,
+        };
+        localStorage.setItem(STORAGE_KEYS.READING_STATS, JSON.stringify(merged));
+      } else {
+        localStorage.setItem(STORAGE_KEYS.READING_STATS, JSON.stringify(data.readingStats));
+      }
+    }
+
+    // Import reader settings
+    if (data.readerSettings) {
+      if (mergeMode === 'replace') {
+        localStorage.setItem(STORAGE_KEYS.READER_SETTINGS, JSON.stringify(data.readerSettings));
+      }
+      // In merge mode, keep existing settings
+    }
+
+    // Import TTS configuration
+    if (data.ttsConfiguration) {
+      if (mergeMode === 'replace') {
+        localStorage.setItem('tts_configuration', JSON.stringify(data.ttsConfiguration));
+      }
+      // In merge mode, keep existing TTS config
+    }
+
+  } catch (error) {
+    console.error('Failed to import all data:', error);
+    throw error;
+  }
+};
+
+// Download all data as JSON file
+export const downloadAllData = (): void => {
+  try {
+    const data = exportAllData();
+    const dataStr = JSON.stringify(data, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(dataBlob);
+
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `read-and-translate-backup-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    console.error('Failed to download all data:', error);
+    throw error;
+  }
+};
+
+// Import from file
+export const importFromFile = async (file: File, mergeMode: 'replace' | 'merge' = 'merge'): Promise<void> => {
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text) as AllDataExport;
+
+    // Validate data structure
+    if (!data.version || !data.books) {
+      throw new Error('Invalid backup file format');
+    }
+
+    importAllData(data, mergeMode);
+  } catch (error) {
+    console.error('Failed to import from file:', error);
+    throw error;
+  }
+};

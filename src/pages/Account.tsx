@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { User, Settings, Heart, Download, HelpCircle, LogOut, Languages, Volume2 } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { User, Settings, Heart, Download, HelpCircle, LogOut, Languages, Volume2, Upload, Save, Database } from 'lucide-react';
 import BottomNav from '@/components/BottomNav';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,6 +9,7 @@ import { getTranslationConfig, saveTranslationConfig } from '@/lib/translation';
 import { getTTSConfig, saveTTSConfig, TTSEngine } from '@/lib/ttsConfig';
 import { checkServerHealth, getAvailableVoices, VoiceOption } from '@/lib/edgeTTS';
 import { checkXTTSServerHealth, getAvailableXTTSVoices } from '@/lib/xttsTTS';
+import { downloadAllData, importFromFile, exportAllData } from '@/lib/storage';
 import {
   Dialog,
   DialogContent,
@@ -17,6 +18,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
 const menuItems = [
   { icon: Settings, label: 'Settings', description: 'App preferences' },
@@ -525,6 +533,81 @@ const Account = () => {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Data Sync Section */}
+        <Card className="bg-card">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Database className="h-5 w-5" />
+              Data Sync
+            </CardTitle>
+            <CardDescription>
+              Export and import your books, reading progress, and settings to sync across devices
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="bg-muted p-4 rounded-md space-y-2 text-sm">
+              <p className="text-muted-foreground">
+                <strong>Why sync?</strong> Your books are stored locally in your browser.
+                Use this feature to transfer data between devices or backup your library.
+              </p>
+              <ul className="list-disc list-inside text-muted-foreground space-y-1 ml-2">
+                <li>Export your data on one device</li>
+                <li>Import it on another device</li>
+                <li>Works across computers, phones, and tablets</li>
+              </ul>
+            </div>
+
+            <div className="flex gap-2">
+              <Button
+                variant="default"
+                className="flex-1"
+                onClick={() => {
+                  try {
+                    const data = exportAllData();
+                    downloadAllData();
+                    toast.success(`Exported ${data.books.length} books successfully!`);
+                  } catch (error) {
+                    toast.error('Failed to export data');
+                  }
+                }}
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Export All Data
+              </Button>
+
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  const input = document.createElement('input');
+                  input.type = 'file';
+                  input.accept = '.json';
+                  input.onchange = async (e) => {
+                    const file = (e.target as HTMLInputElement).files?.[0];
+                    if (file) {
+                      try {
+                        await importFromFile(file, 'merge');
+                        toast.success('Data imported successfully! Refresh the page to see your books.');
+                        setTimeout(() => window.location.reload(), 2000);
+                      } catch (error) {
+                        toast.error('Failed to import data. Please check the file format.');
+                      }
+                    }
+                  };
+                  input.click();
+                }}
+              >
+                <Upload className="h-4 w-4 mr-2" />
+                Import Data
+              </Button>
+            </div>
+
+            <p className="text-xs text-muted-foreground text-center">
+              Import mode: Merge (keeps existing books, adds new ones)
+            </p>
+          </CardContent>
+        </Card>
 
         {/* Logout Button */}
         <Button variant="outline" className="w-full" size="lg">
