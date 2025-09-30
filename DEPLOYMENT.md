@@ -5,8 +5,39 @@
 这是一个灵活的混合部署方案，让你随时随地使用高质量 AI 朗读：
 
 - **前端**：部署到 Vercel（全球 CDN，免费）
-- **在家模式**：连接电脑 TTS 服务器（XTTS / Edge TTS）
-- **外出模式**：使用 Web Speech API（浏览器内置）
+- **TTS 服务**：三种模式灵活切换
+  - 🌟 **推荐**：Web Speech API（浏览器内置，即时可用）
+  - ☁️ **云端**：Edge TTS on Railway（高质量，全球访问）
+  - 🏠 **本地**：XTTS v2（最佳音质，仅在家使用）
+
+---
+
+## ☁️ 云端部署（推荐）
+
+### 为什么选择云端部署？
+
+- ✅ **无需电脑**：随时随地访问
+- ✅ **完全免费**：Railway 每月 500 小时免费额度
+- ✅ **自动更新**：GitHub push 自动部署
+- ✅ **全球可访问**：HTTPS + CDN
+
+### 快速部署 Edge TTS 到 Railway
+
+详细步骤请查看：**[RAILWAY_DEPLOYMENT.md](./RAILWAY_DEPLOYMENT.md)**
+
+**简要步骤**：
+1. 访问 [railway.app](https://railway.app)，用 GitHub 登录
+2. 新建项目 → Deploy from GitHub
+3. 选择 `read-and-translate` 仓库
+4. 设置 Root Directory 为 `tts-server`
+5. 生成域名，复制 URL
+6. 在前端配置 Edge TTS Server URL
+
+**部署后**：
+- Edge TTS 全球可访问
+- 音质：⭐⭐⭐⭐（接近人声）
+- 响应速度：1-2 秒
+- 费用：完全免费
 
 ---
 

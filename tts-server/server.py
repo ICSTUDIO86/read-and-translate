@@ -83,6 +83,36 @@ async def get_voices():
     }
 
 
+def split_text(text: str, max_length: int = 1000) -> list[str]:
+    """
+    Split text into chunks that are safe for Edge TTS.
+    Tries to split at sentence boundaries.
+    """
+    if len(text) <= max_length:
+        return [text]
+
+    chunks = []
+    sentences = text.replace('!', '.').replace('?', '.').split('.')
+    current_chunk = ""
+
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if not sentence:
+            continue
+
+        if len(current_chunk) + len(sentence) + 1 <= max_length:
+            current_chunk += sentence + ". "
+        else:
+            if current_chunk:
+                chunks.append(current_chunk.strip())
+            current_chunk = sentence + ". "
+
+    if current_chunk:
+        chunks.append(current_chunk.strip())
+
+    return chunks
+
+
 @app.post("/tts")
 async def text_to_speech(request: TTSRequest):
     """
@@ -100,19 +130,28 @@ async def text_to_speech(request: TTSRequest):
     try:
         logger.info(f"TTS request: voice={request.voice}, text_length={len(request.text)}")
 
-        # Create TTS communicate object
-        communicate = edge_tts.Communicate(
-            text=request.text,
-            voice=request.voice,
-            rate=request.rate,
-            pitch=request.pitch
-        )
+        # Split long text into chunks
+        text_chunks = split_text(request.text, max_length=1000)
+        logger.info(f"Split text into {len(text_chunks)} chunks")
 
-        # Generate audio
+        # Generate audio for each chunk
         audio_data = io.BytesIO()
-        async for chunk in communicate.stream():
-            if chunk["type"] == "audio":
-                audio_data.write(chunk["data"])
+
+        for i, chunk in enumerate(text_chunks):
+            logger.info(f"Processing chunk {i+1}/{len(text_chunks)}, length={len(chunk)}")
+
+            # Create TTS communicate object
+            communicate = edge_tts.Communicate(
+                text=chunk,
+                voice=request.voice,
+                rate=request.rate,
+                pitch=request.pitch
+            )
+
+            # Generate audio
+            async for stream_chunk in communicate.stream():
+                if stream_chunk["type"] == "audio":
+                    audio_data.write(stream_chunk["data"])
 
         audio_data.seek(0)
 
@@ -144,13 +183,13 @@ if __name__ == "__main__":
     print("🎙️  Edge TTS Server Starting...")
     print("=" * 60)
     print("📍 Server will be available at:")
-    print("   - Local:   http://localhost:5000")
-    print("   - Network: http://<your-ip>:5000")
+    print("   - Local:   http://localhost:5002")
+    print("   - Network: http://<your-ip>:5002")
     print("")
     print("📱 For mobile access:")
     print("   1. Make sure your phone is on the same WiFi")
     print("   2. Find your computer's IP address")
-    print("   3. Access http://<computer-ip>:5000 from your phone")
+    print("   3. Access http://<computer-ip>:5002 from your phone")
     print("=" * 60)
 
-    uvicorn.run(app, host="0.0.0.0", port=5000, log_level="info")
+    uvicorn.run(app, host="0.0.0.0", port=5002, log_level="info")

@@ -117,10 +117,15 @@ async def text_to_speech(request: TTSRequest):
 
         logger.info(f"TTS request: voice={request.voice}, lang={request.language}, text_length={len(request.text)}")
 
-        # Map voice to speaker reference
-        # For now, we'll use the built-in speakers
-        # You can add custom speaker files for voice cloning
-        speaker_wav = None  # Use default XTTS speaker
+        # Map voice to speaker name
+        # XTTS v2 has built-in speakers we can use
+        speaker_map = {
+            "female": "Claribel Dervla",
+            "male": "Damien Black",
+            "female_emotional": "Ana Florence",
+            "male_deep": "Baldur Sanjin"
+        }
+        speaker = speaker_map.get(request.voice, "Claribel Dervla")
 
         # Generate speech
         # XTTS v2 automatically handles:
@@ -130,7 +135,7 @@ async def text_to_speech(request: TTSRequest):
         wav = tts_model.tts(
             text=request.text,
             language=request.language,
-            speaker_wav=speaker_wav,
+            speaker=speaker,
             speed=request.speed,
         )
 

@@ -31,7 +31,7 @@ const DEFAULT_CONFIG: TTSConfiguration = {
   webSpeechRate: 1.0,
   webSpeechPitch: 1.0,
   // Edge TTS defaults
-  edgeTTSServerUrl: 'http://localhost:5000',
+  edgeTTSServerUrl: 'http://localhost:5002',
   edgeTTSVoice: 'zh-CN-XiaoxiaoNeural',
   edgeTTSRate: '+0%',
   edgeTTSPitch: '+0Hz',
