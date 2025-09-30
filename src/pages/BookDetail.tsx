@@ -1,10 +1,15 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Share2, BookOpen, Play, Pause, ChevronLeft, ChevronRight, Volume2, Languages } from 'lucide-react';
+import { ArrowLeft, Share2, BookOpen, Play, Pause, ChevronLeft, ChevronRight, Volume2, Languages, Edit } from 'lucide-react';
 import { books } from '@/types/book';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import BookReader from '@/components/BookReader';
+import BookEditor from '@/components/BookEditor';
+import ShareMenu from '@/components/ShareMenu';
+import { getUploadedBooks } from '@/lib/storage';
 import bookPsychologyMoney from '@/assets/book-psychology-money.jpg';
 import bookSapiens from '@/assets/book-sapiens.jpg';
 import bookDesignEveryday from '@/assets/book-design-everyday.jpg';
@@ -15,26 +20,43 @@ import bookThinkingFastSlow from '@/assets/book-thinking-fast-slow.jpg';
 const BookDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const bookData = books.find(b => b.id === id);
+
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [progress, setProgress] = useState(0);
   const [showTranslation, setShowTranslation] = useState(false);
+  const [isReading, setIsReading] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [currentBook, setCurrentBook] = useState<any>(null);
 
-  if (!bookData) {
+  // Update current book when id changes
+  useEffect(() => {
+    const uploadedBooks = getUploadedBooks();
+    const allBooks = [...books, ...uploadedBooks];
+    const bookData = allBooks.find(b => b.id === id);
+
+    if (bookData) {
+      setCurrentBook(bookData);
+    }
+  }, [id]);
+
+  if (!currentBook) {
     return <div>Book not found</div>;
   }
 
-  // Map image
-  let cover = bookData.cover;
-  if (bookData.id === '1') cover = bookPsychologyMoney;
-  if (bookData.id === '2') cover = bookSapiens;
-  if (bookData.id === '3') cover = bookDesignEveryday;
-  if (bookData.id === '4') cover = bookAtomicHabits;
-  if (bookData.id === '5') cover = bookDeepWork;
-  if (bookData.id === '6') cover = bookThinkingFastSlow;
+  // Check if this is an uploaded book
+  const isUploadedBook = currentBook.id.startsWith('uploaded-') || currentBook.id.startsWith('imported-');
 
-  const book = { ...bookData, cover };
+  // Map image for preset books
+  let cover = currentBook.cover;
+  if (currentBook.id === '1') cover = bookPsychologyMoney;
+  if (currentBook.id === '2') cover = bookSapiens;
+  if (currentBook.id === '3') cover = bookDesignEveryday;
+  if (currentBook.id === '4') cover = bookAtomicHabits;
+  if (currentBook.id === '5') cover = bookDeepWork;
+  if (currentBook.id === '6') cover = bookThinkingFastSlow;
+
+  const book = { ...currentBook, cover };
   const totalPages = book.pages;
 
   const handlePlayPause = () => {
@@ -81,6 +103,29 @@ const BookDetail = () => {
     }
   };
 
+  const handleProgressUpdate = (chapterIndex: number, paragraphIndex: number) => {
+    console.log('Progress:', chapterIndex, paragraphIndex);
+  };
+
+  const handleBookSaved = (updatedBook: any) => {
+    setCurrentBook(updatedBook);
+    setIsEditing(false);
+    toast.success('Book updated successfully');
+  };
+
+  // Show reader mode if reading
+  if (isReading && book.chapters && book.chapters.length > 0) {
+    return (
+      <div className="h-screen">
+        <BookReader
+          book={book}
+          onProgressChange={handleProgressUpdate}
+          onClose={() => setIsReading(false)}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-2xl mx-auto">
@@ -90,27 +135,52 @@ const BookDetail = () => {
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div className="flex gap-2">
-            <button className="p-2 hover:bg-secondary rounded-lg transition-colors">
-              <BookOpen className="h-5 w-5" />
-            </button>
-            <button className="p-2 hover:bg-secondary rounded-lg transition-colors">
-              <Share2 className="h-5 w-5" />
-            </button>
+            {book.chapters && book.chapters.length > 0 && (
+              <button
+                onClick={() => setIsReading(true)}
+                className="p-2 hover:bg-secondary rounded-lg transition-colors"
+                title="Start Reading"
+              >
+                <BookOpen className="h-5 w-5" />
+              </button>
+            )}
+            {isUploadedBook && (
+              <button
+                onClick={() => setIsEditing(true)}
+                className="p-2 hover:bg-secondary rounded-lg transition-colors"
+                title="Edit Book"
+              >
+                <Edit className="h-5 w-5" />
+              </button>
+            )}
+            <ShareMenu book={book} />
           </div>
         </div>
 
         {/* Book Info */}
         <div className="px-4 py-8 text-center">
           <div className="w-48 h-72 mx-auto mb-6 rounded-2xl overflow-hidden shadow-2xl">
-            <img 
-              src={book.cover} 
+            <img
+              src={book.cover}
               alt={book.title}
               className="w-full h-full object-cover"
             />
           </div>
-          
+
           <h1 className="text-2xl font-bold text-foreground mb-2">{book.title}</h1>
           <p className="text-muted-foreground mb-4">{book.author}</p>
+
+          {/* Start Reading Button */}
+          {book.chapters && book.chapters.length > 0 && (
+            <Button
+              onClick={() => setIsReading(true)}
+              className="mb-4 gap-2"
+              size="lg"
+            >
+              <BookOpen className="h-5 w-5" />
+              Start Reading
+            </Button>
+          )}
           
           <div className="flex items-center justify-center gap-6 text-sm">
             <div className="text-center">
@@ -242,6 +312,20 @@ const BookDetail = () => {
 
         <div className="h-52"></div>
       </div>
+
+      {/* Edit Dialog */}
+      <Dialog open={isEditing} onOpenChange={setIsEditing}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Book</DialogTitle>
+          </DialogHeader>
+          <BookEditor
+            book={book}
+            onSave={handleBookSaved}
+            onCancel={() => setIsEditing(false)}
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

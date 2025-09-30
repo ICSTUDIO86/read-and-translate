@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { books, genres } from '@/types/book';
 import FeaturedBook from '@/components/FeaturedBook';
 import BookCard from '@/components/BookCard';
 import BottomNav from '@/components/BottomNav';
 import { cn } from '@/lib/utils';
+import { getAllReadingProgress, getUploadedBooks } from '@/lib/storage';
 import bookPsychologyMoney from '@/assets/book-psychology-money.jpg';
 import bookSapiens from '@/assets/book-sapiens.jpg';
 import bookDesignEveryday from '@/assets/book-design-everyday.jpg';
@@ -13,8 +14,20 @@ import bookThinkingFastSlow from '@/assets/book-thinking-fast-slow.jpg';
 
 const Home = () => {
   const [selectedGenre, setSelectedGenre] = useState('All Genre');
-  
-  // Map imported images to books
+  const [readingProgress, setReadingProgress] = useState<any[]>([]);
+  const [uploadedBooks, setUploadedBooks] = useState<any[]>([]);
+
+  useEffect(() => {
+    // Load reading progress from localStorage
+    const progress = getAllReadingProgress();
+    setReadingProgress(progress);
+
+    // Load uploaded books
+    const uploaded = getUploadedBooks();
+    setUploadedBooks(uploaded);
+  }, []);
+
+  // Map imported images to preset books and add progress
   const booksWithImages = books.map(book => {
     let cover = book.cover;
     if (book.id === '1') cover = bookPsychologyMoney;
@@ -23,15 +36,51 @@ const Home = () => {
     if (book.id === '4') cover = bookAtomicHabits;
     if (book.id === '5') cover = bookDeepWork;
     if (book.id === '6') cover = bookThinkingFastSlow;
-    return { ...book, cover };
+
+    // Calculate progress based on saved data
+    const savedProgress = readingProgress.find(p => p.bookId === book.id);
+    let progressPercent = book.progress;
+
+    if (savedProgress && book.chapters) {
+      const totalParagraphs = book.chapters.reduce((total, ch) => total + ch.paragraphs.length, 0);
+      let currentPosition = 0;
+      for (let i = 0; i < savedProgress.currentChapter; i++) {
+        currentPosition += book.chapters[i].paragraphs.length;
+      }
+      currentPosition += savedProgress.currentParagraph + 1;
+      progressPercent = Math.round((currentPosition / totalParagraphs) * 100);
+    }
+
+    return { ...book, cover, progress: progressPercent };
   });
 
+  // Add progress to uploaded books
+  const uploadedBooksWithProgress = uploadedBooks.map(book => {
+    const savedProgress = readingProgress.find(p => p.bookId === book.id);
+    let progressPercent = 0;
+
+    if (savedProgress && book.chapters) {
+      const totalParagraphs = book.chapters.reduce((total: number, ch: any) => total + ch.paragraphs.length, 0);
+      let currentPosition = 0;
+      for (let i = 0; i < savedProgress.currentChapter; i++) {
+        currentPosition += book.chapters[i].paragraphs.length;
+      }
+      currentPosition += savedProgress.currentParagraph + 1;
+      progressPercent = Math.round((currentPosition / totalParagraphs) * 100);
+    }
+
+    return { ...book, progress: progressPercent };
+  });
+
+  // Combine all books
+  const allBooks = [...booksWithImages, ...uploadedBooksWithProgress];
+
   const featuredBook = booksWithImages[0];
-  const continueReading = booksWithImages.filter(b => b.progress);
-  
-  const filteredBooks = selectedGenre === 'All Genre' 
-    ? booksWithImages 
-    : booksWithImages.filter(b => b.genre === selectedGenre);
+  const continueReading = allBooks.filter(b => b.progress && b.progress > 0);
+
+  const filteredBooks = selectedGenre === 'All Genre'
+    ? allBooks
+    : allBooks.filter(b => b.genre === selectedGenre);
 
   return (
     <div className="min-h-screen bg-background pb-20">

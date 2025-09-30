@@ -1,6 +1,13 @@
+import { useState, useEffect } from 'react';
 import { books } from '@/types/book';
 import BookCard from '@/components/BookCard';
 import BottomNav from '@/components/BottomNav';
+import BookUpload from '@/components/BookUpload';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Upload, Trash2 } from 'lucide-react';
+import { getUploadedBooks, deleteUploadedBook } from '@/lib/storage';
+import { toast } from 'sonner';
 import bookPsychologyMoney from '@/assets/book-psychology-money.jpg';
 import bookSapiens from '@/assets/book-sapiens.jpg';
 import bookDesignEveryday from '@/assets/book-design-everyday.jpg';
@@ -9,6 +16,19 @@ import bookDeepWork from '@/assets/book-deep-work.jpg';
 import bookThinkingFastSlow from '@/assets/book-thinking-fast-slow.jpg';
 
 const Library = () => {
+  const [uploadedBooks, setUploadedBooks] = useState<any[]>([]);
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  // Load uploaded books
+  const loadUploadedBooks = () => {
+    const uploaded = getUploadedBooks();
+    setUploadedBooks(uploaded);
+  };
+
+  useEffect(() => {
+    loadUploadedBooks();
+  }, []);
+
   // Map imported images to books
   const booksWithImages = books.map(book => {
     let cover = book.cover;
@@ -23,11 +43,60 @@ const Library = () => {
 
   const myBooks = booksWithImages.filter(b => b.isFree);
 
+  const handleUploadSuccess = () => {
+    loadUploadedBooks();
+    setDialogOpen(false);
+  };
+
+  const handleDeleteBook = (bookId: string) => {
+    deleteUploadedBook(bookId);
+    loadUploadedBooks();
+    toast.success('Book deleted successfully');
+  };
+
   return (
     <div className="min-h-screen bg-background pb-20">
       <div className="max-w-2xl mx-auto px-4 py-6">
-        <h1 className="text-2xl font-bold text-foreground mb-6">My Library</h1>
-        
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl font-bold text-foreground">My Library</h1>
+
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="default" size="sm">
+                <Upload className="h-4 w-4 mr-2" />
+                Upload Book
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-lg">
+              <DialogHeader>
+                <DialogTitle>Upload Your Book</DialogTitle>
+              </DialogHeader>
+              <BookUpload onUploadSuccess={handleUploadSuccess} />
+            </DialogContent>
+          </Dialog>
+        </div>
+
+        {/* Uploaded Books */}
+        {uploadedBooks.length > 0 && (
+          <div className="mb-8">
+            <h2 className="text-lg font-semibold text-foreground mb-4">Uploaded Books</h2>
+            <div className="grid grid-cols-3 gap-4">
+              {uploadedBooks.map((book) => (
+                <div key={book.id} className="relative group">
+                  <BookCard book={book} />
+                  <button
+                    onClick={() => handleDeleteBook(book.id)}
+                    className="absolute top-2 right-2 p-2 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-lg hover:bg-red-600"
+                    title="Delete book"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="mb-8">
           <h2 className="text-lg font-semibold text-foreground mb-4">Downloaded Books</h2>
           <div className="grid grid-cols-3 gap-4">
