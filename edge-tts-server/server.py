@@ -11,11 +11,11 @@ import tempfile
 from pathlib import Path
 
 import edge_tts
-from flask import Flask, request, send_file, jsonify
-from flask_cors import CORS
+from quart import Quart, request, send_file, jsonify
+from quart_cors import cors
 
-app = Flask(__name__)
-CORS(app)  # Enable CORS for browser requests
+app = Quart(__name__)
+app = cors(app, allow_origin="*")  # Enable CORS for browser requests
 
 # Cache directory for generated audio files
 CACHE_DIR = Path(tempfile.gettempdir()) / "edge-tts-cache"
