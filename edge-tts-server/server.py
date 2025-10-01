@@ -106,7 +106,9 @@ async def list_voices():
 async def synthesize():
     """Synthesize speech from text"""
     try:
+        print("[Edge TTS] Received synthesize request")
         data = await request.json
+        print(f"[Edge TTS] Request data: {data}")
 
         # Get parameters
         text = data.get('text', '')
@@ -114,7 +116,10 @@ async def synthesize():
         rate = data.get('rate', '+0%')
         pitch = data.get('pitch', '+0Hz')
 
+        print(f"[Edge TTS] Parameters - text length: {len(text)}, voice: {voice}, rate: {rate}, pitch: {pitch}")
+
         if not text:
+            print("[Edge TTS] Error: No text provided")
             return jsonify({'error': 'No text provided'}), 400
 
         # Check cache first
@@ -123,7 +128,7 @@ async def synthesize():
 
         if cache_file.exists():
             print(f"[Edge TTS] Cache hit: {cache_key[:8]}...")
-            return send_file(
+            return await send_file(
                 cache_file,
                 mimetype='audio/mpeg',
                 as_attachment=False,
@@ -133,14 +138,14 @@ async def synthesize():
         # Generate new speech
         print(f"[Edge TTS] Generating: {text[:50]}... (voice: {voice})")
         audio_data = await generate_speech(text, voice, rate, pitch)
+        print(f"[Edge TTS] Generated audio, size: {len(audio_data)} bytes")
 
         # Save to cache
         with open(cache_file, 'wb') as f:
             f.write(audio_data)
+        print(f"[Edge TTS] Saved to cache: {cache_key[:8]}...")
 
-        print(f"[Edge TTS] Generated and cached: {cache_key[:8]}...")
-
-        return send_file(
+        return await send_file(
             cache_file,
             mimetype='audio/mpeg',
             as_attachment=False,
@@ -148,8 +153,10 @@ async def synthesize():
         )
 
     except Exception as e:
+        import traceback
         print(f"[Edge TTS] Error: {e}")
-        return jsonify({'error': str(e)}), 500
+        print(f"[Edge TTS] Traceback: {traceback.format_exc()}")
+        return jsonify({'error': str(e), 'detail': traceback.format_exc()}), 500
 
 
 @app.route('/clear-cache', methods=['POST'])
