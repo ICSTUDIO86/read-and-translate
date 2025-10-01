@@ -37,7 +37,7 @@ export const useCloudSync = () => {
           user_id: user.id,
           title: book.title,
           author: book.author || null,
-          cover_url: book.coverUrl || null,
+          cover_url: book.cover || null,
           chapters: book.chapters,
         }, { onConflict: 'id' });
 

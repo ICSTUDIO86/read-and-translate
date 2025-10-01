@@ -13,6 +13,7 @@ import { downloadAllData, importFromFile, exportAllData } from '@/lib/supabaseSt
 import { useAuth } from '@/hooks/useAuth';
 import { useCloudSync } from '@/hooks/useCloudSync';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
+import { AuthForm } from '@/components/AuthForm';
 import {
   Dialog,
   DialogContent,
@@ -46,9 +47,13 @@ const Account = () => {
   const [availableVoices, setAvailableVoices] = useState<Record<string, VoiceOption[]>>({});
 
   // Cloud sync hooks
-  const { user, isAuthenticated, loading: authLoading } = useAuth();
+  const { user, isAuthenticated, loading: authLoading, signOut } = useAuth();
   const { syncing, progress, uploadLocalDataToCloud, downloadCloudDataToLocal, checkCloudStatus } = useCloudSync();
   const [cloudStatus, setCloudStatus] = useState<any>(null);
+
+  // Check if user is anonymous
+  const isAnonymous = user?.is_anonymous ?? false;
+  const userEmail = user?.email || 'Anonymous User';
 
   const handleSaveTranslationConfig = () => {
     saveTranslationConfig(translationConfig);
@@ -136,8 +141,15 @@ const Account = () => {
           <div className="w-24 h-24 bg-gradient-to-br from-primary to-accent rounded-full mx-auto mb-4 flex items-center justify-center">
             <User className="h-12 w-12 text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-foreground mb-1">Reader</h1>
-          <p className="text-sm text-muted-foreground">reader@bookapp.com</p>
+          <h1 className="text-2xl font-bold text-foreground mb-1">
+            {isAnonymous ? 'Anonymous User' : 'Reader'}
+          </h1>
+          <p className="text-sm text-muted-foreground">{userEmail}</p>
+          {isAnonymous && (
+            <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
+              ⚠️ Sign in with email to sync across devices
+            </p>
+          )}
         </div>
 
         {/* Stats */}
@@ -155,6 +167,13 @@ const Account = () => {
             <p className="text-xs text-muted-foreground">Favorites</p>
           </div>
         </div>
+
+        {/* Authentication Section - Show login form if anonymous */}
+        {isAnonymous && (
+          <div className="mb-8">
+            <AuthForm />
+          </div>
+        )}
 
         {/* Menu Items */}
         <div className="space-y-2 mb-6">
@@ -770,10 +789,24 @@ const Account = () => {
         </Card>
 
         {/* Logout Button */}
-        <Button variant="outline" className="w-full" size="lg">
-          <LogOut className="h-4 w-4 mr-2" />
-          Log Out
-        </Button>
+        {!isAnonymous && (
+          <Button
+            variant="outline"
+            className="w-full"
+            size="lg"
+            onClick={async () => {
+              try {
+                await signOut();
+                toast.success('Signed out successfully');
+              } catch (error) {
+                toast.error('Failed to sign out');
+              }
+            }}
+          >
+            <LogOut className="h-4 w-4 mr-2" />
+            Log Out
+          </Button>
+        )}
       </div>
 
       <BottomNav />

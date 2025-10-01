@@ -78,12 +78,56 @@ export const useAuth = () => {
     }
   };
 
+  const signUpWithEmail = async (email: string, password: string) => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+      });
+
+      if (error) throw error;
+
+      setUser(data.user);
+      return data.user;
+    } catch (err) {
+      console.error('Error signing up:', err);
+      setError(err instanceof Error ? err.message : 'Failed to sign up');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const signInWithEmail = async (email: string, password: string) => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) throw error;
+
+      setUser(data.user);
+      return data.user;
+    } catch (err) {
+      console.error('Error signing in:', err);
+      setError(err instanceof Error ? err.message : 'Failed to sign in');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return {
     user,
     loading,
     error,
     isAuthenticated: !!user,
     signInAnonymously,
+    signUpWithEmail,
+    signInWithEmail,
     signOut,
   };
 };
