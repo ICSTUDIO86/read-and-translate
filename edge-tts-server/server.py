@@ -106,7 +106,7 @@ async def list_voices():
 async def synthesize():
     """Synthesize speech from text"""
     try:
-        data = request.json
+        data = await request.get_json()
 
         # Get parameters
         text = data.get('text', '')
