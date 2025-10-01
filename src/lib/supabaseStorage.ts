@@ -12,13 +12,22 @@ interface ReadingProgress {
 }
 
 export const saveReadingProgress = async (progress: ReadingProgress): Promise<void> => {
+  // Always save to localStorage first for reliability
+  localStorage.saveReadingProgress(progress);
+  console.log('[Storage] Saved reading progress to localStorage:', progress);
+
   if (!isSupabaseConfigured()) {
-    return localStorage.saveReadingProgress(progress);
+    console.log('[Storage] Supabase not configured, using localStorage only');
+    return;
   }
 
   try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('Not authenticated');
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      console.log('[Storage] User not authenticated, using localStorage only');
+      return; // Return early, don't throw error
+    }
 
     const { error } = await supabase
       .from('reading_progress')
@@ -32,25 +41,33 @@ export const saveReadingProgress = async (progress: ReadingProgress): Promise<vo
         onConflict: 'user_id,book_id'
       });
 
-    if (error) throw error;
-
-    // Also save to localStorage as backup
-    localStorage.saveReadingProgress(progress);
+    if (error) {
+      console.warn('[Storage] Failed to save to Supabase, but localStorage is updated:', error);
+    } else {
+      console.log('[Storage] Successfully saved to both localStorage and Supabase');
+    }
   } catch (error) {
-    console.error('Failed to save reading progress to cloud:', error);
-    // Fallback to localStorage
-    localStorage.saveReadingProgress(progress);
+    console.warn('[Storage] Supabase save error (localStorage is already updated):', error);
   }
 };
 
 export const getReadingProgress = async (bookId: string): Promise<ReadingProgress | null> => {
+  // Try localStorage first for faster load
+  const localProgress = localStorage.getReadingProgress(bookId);
+  console.log('[Storage] Retrieved progress from localStorage:', localProgress);
+
   if (!isSupabaseConfigured()) {
-    return localStorage.getReadingProgress(bookId);
+    console.log('[Storage] Supabase not configured, using localStorage only');
+    return localProgress;
   }
 
   try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('Not authenticated');
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      console.log('[Storage] User not authenticated, using localStorage');
+      return localProgress;
+    }
 
     const { data, error } = await supabase
       .from('reading_progress')
@@ -59,21 +76,30 @@ export const getReadingProgress = async (bookId: string): Promise<ReadingProgres
       .eq('book_id', bookId)
       .single();
 
-    if (error && error.code !== 'PGRST116') throw error; // PGRST116 = not found
+    if (error && error.code !== 'PGRST116') {
+      console.warn('[Storage] Supabase read error, using localStorage:', error);
+      return localProgress;
+    }
 
     if (data) {
-      return {
+      const cloudProgress = {
         bookId: data.book_id,
         currentChapter: data.current_chapter,
         currentParagraph: data.current_paragraph,
         lastRead: data.last_read,
       };
+      console.log('[Storage] Retrieved progress from Supabase:', cloudProgress);
+
+      // Return the most recent progress
+      if (!localProgress || new Date(cloudProgress.lastRead) > new Date(localProgress.lastRead)) {
+        return cloudProgress;
+      }
     }
 
-    return null;
+    return localProgress;
   } catch (error) {
-    console.error('Failed to get reading progress from cloud:', error);
-    return localStorage.getReadingProgress(bookId);
+    console.warn('[Storage] Failed to get reading progress from cloud:', error);
+    return localProgress;
   }
 };
 

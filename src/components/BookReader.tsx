@@ -120,15 +120,54 @@ const BookReader = ({ book, onProgressChange, onClose }: BookReaderProps) => {
 
   useEffect(() => {
     // Save progress to localStorage
-    saveReadingProgress({
+    const progressData = {
       bookId: book.id,
       currentChapter: currentChapterIndex,
       currentParagraph: startParagraphIndex,
       lastRead: new Date().toISOString(),
-    });
+    };
 
+    saveReadingProgress(progressData);
     onProgressChange?.(currentChapterIndex, startParagraphIndex);
   }, [book.id, currentChapterIndex, currentPageInChapter, startParagraphIndex, onProgressChange]);
+
+  // Save progress when user closes or refreshes the page
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      // Use synchronous localStorage to ensure save completes
+      const progressData = {
+        bookId: book.id,
+        currentChapter: currentChapterIndex,
+        currentParagraph: startParagraphIndex,
+        lastRead: new Date().toISOString(),
+      };
+
+      // Direct localStorage save for reliability on page unload
+      try {
+        const allProgress = JSON.parse(localStorage.getItem('readingProgress') || '[]');
+        const existingIndex = allProgress.findIndex((p: any) => p.bookId === book.id);
+
+        if (existingIndex >= 0) {
+          allProgress[existingIndex] = progressData;
+        } else {
+          allProgress.push(progressData);
+        }
+
+        localStorage.setItem('readingProgress', JSON.stringify(allProgress));
+        console.log('[BookReader] Saved progress on page unload:', progressData);
+      } catch (error) {
+        console.error('[BookReader] Failed to save on unload:', error);
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      // Also save when component unmounts
+      handleBeforeUnload();
+    };
+  }, [book.id, currentChapterIndex, startParagraphIndex]);
 
   // Reset to first page when chapter changes
   useEffect(() => {
@@ -351,11 +390,27 @@ const BookReader = ({ book, onProgressChange, onClose }: BookReaderProps) => {
 
       const textToRead = paragraphsToRead.map(p => p.text).join('. ');
       console.log('TTS Debug - Text to read:', textToRead.substring(0, 100));
-      const lang = settings.ttsLanguage === 'translated' ? 'zh-CN' : 'en-US';
-      speak(textToRead, { lang, rate: 1.0 });
-      toast.success('Started AI reading', {
-        description: `Reading page ${currentPageInChapter + 1}`,
-      });
+
+      if (!isSupported) {
+        toast.error('Text-to-Speech not supported', {
+          description: 'Your browser does not support speech synthesis. Try Chrome, Edge, or Safari.',
+        });
+        return;
+      }
+
+      try {
+        const lang = settings.ttsLanguage === 'translated' ? 'zh-CN' : 'en-US';
+        speak(textToRead, { lang, rate: 1.0 });
+        console.log('[BookReader] TTS started with engine:', currentEngine);
+        toast.success('Started AI reading', {
+          description: `Reading page ${currentPageInChapter + 1} with ${currentEngine === 'web-speech' ? 'Web Speech' : currentEngine}`,
+        });
+      } catch (error) {
+        console.error('[BookReader] TTS error:', error);
+        toast.error('Failed to start reading', {
+          description: error instanceof Error ? error.message : 'Unknown error occurred',
+        });
+      }
     }
   };
 

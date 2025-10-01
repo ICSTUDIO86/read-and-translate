@@ -33,7 +33,29 @@ export const useTTS = () => {
 
   useEffect(() => {
     // Check if Speech Synthesis API is supported
-    setIsSupported('speechSynthesis' in window);
+    const supported = 'speechSynthesis' in window;
+    setIsSupported(supported);
+
+    if (supported) {
+      // Load voices - Chrome requires this to initialize voice list
+      const loadVoices = () => {
+        const voices = window.speechSynthesis.getVoices();
+        console.log('[TTS] Available voices:', voices.length);
+        if (voices.length > 0) {
+          console.log('[TTS] Sample voices:', voices.slice(0, 3).map(v => `${v.name} (${v.lang})`));
+        }
+      };
+
+      // Load voices immediately
+      loadVoices();
+
+      // Also listen for voiceschanged event (Chrome loads voices asynchronously)
+      if (window.speechSynthesis.onvoiceschanged !== undefined) {
+        window.speechSynthesis.onvoiceschanged = loadVoices;
+      }
+    } else {
+      console.warn('[TTS] Speech Synthesis API not supported in this browser');
+    }
 
     return () => {
       // Cleanup on unmount
@@ -44,10 +66,19 @@ export const useTTS = () => {
   }, []);
 
   const speakWithWebSpeech = useCallback((text: string, options: TTSOptions = {}) => {
-    if (!text) return;
+    if (!text) {
+      console.warn('[TTS] No text provided to speak');
+      return;
+    }
+
+    if (!window.speechSynthesis) {
+      console.error('[TTS] Speech Synthesis not available');
+      return;
+    }
 
     // Cancel any ongoing speech
     window.speechSynthesis.cancel();
+    console.log('[TTS] Starting Web Speech synthesis');
 
     // Store current text for word tracking
     currentTextRef.current = text;
@@ -58,7 +89,21 @@ export const useTTS = () => {
     utterance.volume = options.volume || 1.0;
     utterance.lang = options.lang || 'en-US';
 
+    // Try to select an appropriate voice
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length > 0) {
+      // Prefer voices that match the language
+      const matchingVoice = voices.find(v => v.lang.startsWith(utterance.lang.split('-')[0]));
+      if (matchingVoice) {
+        utterance.voice = matchingVoice;
+        console.log('[TTS] Using voice:', matchingVoice.name);
+      } else {
+        console.log('[TTS] Using default voice');
+      }
+    }
+
     utterance.onstart = () => {
+      console.log('[TTS] Speech started');
       setIsPlaying(true);
       setIsPaused(false);
       setCurrentEngine('web-speech');
@@ -77,7 +122,16 @@ export const useTTS = () => {
       }
     };
 
+    utterance.onerror = (event) => {
+      console.error('[TTS] Speech error:', event.error, event);
+      setIsPlaying(false);
+      setIsPaused(false);
+      setCurrentWordIndex(-1);
+      setCurrentCharIndex(0);
+    };
+
     utterance.onend = () => {
+      console.log('[TTS] Speech ended');
       setIsPlaying(false);
       setIsPaused(false);
       setCurrentWordIndex(-1);
@@ -92,16 +146,16 @@ export const useTTS = () => {
       }
     };
 
-    utterance.onerror = (event) => {
-      console.error('Speech synthesis error:', event);
+    utteranceRef.current = utterance;
+
+    try {
+      window.speechSynthesis.speak(utterance);
+      console.log('[TTS] Utterance queued for speaking');
+    } catch (error) {
+      console.error('[TTS] Failed to queue utterance:', error);
       setIsPlaying(false);
       setIsPaused(false);
-      setCurrentWordIndex(-1);
-      setCurrentCharIndex(0);
-    };
-
-    utteranceRef.current = utterance;
-    window.speechSynthesis.speak(utterance);
+    }
   }, []);
 
   const speakWithEdgeTTS = useCallback(async (text: string, options: TTSOptions = {}) => {
