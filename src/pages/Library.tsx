@@ -12,11 +12,14 @@ import { triggerBooksUpdate } from '@/hooks/useUploadedBooks';
 const Library = () => {
   const [uploadedBooks, setUploadedBooks] = useState<any[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Load uploaded books
   const loadUploadedBooks = async () => {
+    setIsLoading(true);
     const uploaded = await getUploadedBooks();
     setUploadedBooks(uploaded);
+    setIsLoading(false);
   };
 
   useEffect(() => {
@@ -72,7 +75,12 @@ const Library = () => {
         </div>
 
         {/* Uploaded Books */}
-        {uploadedBooks.length > 0 ? (
+        {isLoading ? (
+          <div className="text-center py-12">
+            <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4" />
+            <p className="text-muted-foreground">Loading your library...</p>
+          </div>
+        ) : uploadedBooks.length > 0 ? (
           <div className="mb-8">
             <h2 className="text-lg font-semibold text-foreground mb-4">My Books</h2>
             <div className="grid grid-cols-3 gap-4">

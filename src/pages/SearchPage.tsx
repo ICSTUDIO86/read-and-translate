@@ -11,7 +11,7 @@ const filters = ['All Result', 'Free', 'Premium', 'Author', 'Genre'];
 const SearchPage = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState('All Result');
-  const { uploadedBooks } = useUploadedBooks();
+  const { uploadedBooks, isLoading } = useUploadedBooks();
 
   // Only search uploaded books
   const filteredBooks = uploadedBooks.filter(book => {
@@ -65,16 +65,25 @@ const SearchPage = () => {
         </div>
 
         {/* Results */}
-        <div className="grid grid-cols-2 gap-4">
-          {filteredBooks.map((book) => (
-            <BookCard key={book.id} book={book} />
-          ))}
-        </div>
-
-        {filteredBooks.length === 0 && (
+        {isLoading ? (
           <div className="text-center py-12">
-            <p className="text-muted-foreground">No books found</p>
+            <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4" />
+            <p className="text-muted-foreground">Loading books...</p>
           </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-4">
+              {filteredBooks.map((book) => (
+                <BookCard key={book.id} book={book} />
+              ))}
+            </div>
+
+            {filteredBooks.length === 0 && (
+              <div className="text-center py-12">
+                <p className="text-muted-foreground">No books found</p>
+              </div>
+            )}
+          </>
         )}
       </div>
 
