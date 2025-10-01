@@ -144,14 +144,29 @@ export const getVoiceForText = (text: string): { voice: string; lang: string } =
       lang: langMap[detectedLang] || 'en',
     };
   } else if (config.engine === 'edge-tts') {
-    const voiceMap: Record<string, string> = {
-      'zh': config.edgeTTSVoice || 'zh-CN-XiaoxiaoNeural',
+    // Check if user's configured voice matches the detected language
+    const userVoice = config.edgeTTSVoice || 'zh-CN-XiaoxiaoNeural';
+    const userVoiceLang = userVoice.split('-')[0]; // Extract language prefix (e.g., 'zh', 'en', 'ja')
+
+    // If user's voice matches detected language, use it
+    if (userVoiceLang === detectedLang ||
+        (detectedLang === 'zh' && userVoice.startsWith('zh-'))) {
+      return {
+        voice: userVoice,
+        lang: detectedLang,
+      };
+    }
+
+    // Otherwise use language-appropriate defaults
+    const defaultVoiceMap: Record<string, string> = {
+      'zh': 'zh-CN-XiaoxiaoNeural',
       'ja': 'ja-JP-NanamiNeural',
       'ko': 'ko-KR-SunHiNeural',
       'en': 'en-US-AriaNeural',
     };
+
     return {
-      voice: voiceMap[detectedLang] || voiceMap['en'],
+      voice: defaultVoiceMap[detectedLang] || defaultVoiceMap['en'],
       lang: detectedLang,
     };
   } else {

@@ -175,7 +175,14 @@ export const useTTS = () => {
       const config = getTTSConfig();
 
       // Get voice based on text language and user preferences
-      const { voice: selectedVoice } = getVoiceForText(text);
+      const { voice: selectedVoice, lang: detectedLang } = getVoiceForText(text);
+
+      console.log('[Edge TTS] Voice selection:', {
+        detectedLanguage: detectedLang,
+        selectedVoice: selectedVoice,
+        userConfiguredVoice: config.edgeTTSVoice,
+        textPreview: text.substring(0, 50)
+      });
 
       // Prepare Edge TTS config
       const edgeConfig: EdgeTTSConfig = {
