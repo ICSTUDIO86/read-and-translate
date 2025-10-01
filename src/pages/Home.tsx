@@ -1,17 +1,11 @@
 import { useState, useEffect } from 'react';
-import { books, genres } from '@/types/book';
+import { genres } from '@/types/book';
 import FeaturedBook from '@/components/FeaturedBook';
 import BookCard from '@/components/BookCard';
 import BottomNav from '@/components/BottomNav';
 import { cn } from '@/lib/utils';
 import { getAllReadingProgress } from '@/lib/supabaseStorage';
 import { useUploadedBooks } from '@/hooks/useUploadedBooks';
-import bookPsychologyMoney from '@/assets/book-psychology-money.jpg';
-import bookSapiens from '@/assets/book-sapiens.jpg';
-import bookDesignEveryday from '@/assets/book-design-everyday.jpg';
-import bookAtomicHabits from '@/assets/book-atomic-habits.jpg';
-import bookDeepWork from '@/assets/book-deep-work.jpg';
-import bookThinkingFastSlow from '@/assets/book-thinking-fast-slow.jpg';
 
 const Home = () => {
   const [selectedGenre, setSelectedGenre] = useState('All Genre');
@@ -28,35 +22,8 @@ const Home = () => {
     loadData();
   }, []);
 
-  // Map imported images to preset books and add progress
-  const booksWithImages = books.map(book => {
-    let cover = book.cover;
-    if (book.id === '1') cover = bookPsychologyMoney;
-    if (book.id === '2') cover = bookSapiens;
-    if (book.id === '3') cover = bookDesignEveryday;
-    if (book.id === '4') cover = bookAtomicHabits;
-    if (book.id === '5') cover = bookDeepWork;
-    if (book.id === '6') cover = bookThinkingFastSlow;
-
-    // Calculate progress based on saved data
-    const savedProgress = readingProgress.find(p => p.bookId === book.id);
-    let progressPercent = book.progress;
-
-    if (savedProgress && book.chapters) {
-      const totalParagraphs = book.chapters.reduce((total, ch) => total + ch.paragraphs.length, 0);
-      let currentPosition = 0;
-      for (let i = 0; i < savedProgress.currentChapter; i++) {
-        currentPosition += book.chapters[i].paragraphs.length;
-      }
-      currentPosition += savedProgress.currentParagraph + 1;
-      progressPercent = Math.round((currentPosition / totalParagraphs) * 100);
-    }
-
-    return { ...book, cover, progress: progressPercent };
-  });
-
   // Add progress to uploaded books
-  const uploadedBooksWithProgress = uploadedBooks.map(book => {
+  const allBooks = uploadedBooks.map(book => {
     const savedProgress = readingProgress.find(p => p.bookId === book.id);
     let progressPercent = 0;
 
@@ -73,10 +40,7 @@ const Home = () => {
     return { ...book, progress: progressPercent };
   });
 
-  // Combine all books
-  const allBooks = [...booksWithImages, ...uploadedBooksWithProgress];
-
-  const featuredBook = booksWithImages[0];
+  const featuredBook = allBooks[0]; // First uploaded book or undefined
   const continueReading = allBooks.filter(b => b.progress && b.progress > 0);
 
   const filteredBooks = selectedGenre === 'All Genre'
@@ -87,9 +51,11 @@ const Home = () => {
     <div className="min-h-screen bg-background pb-20">
       <div className="max-w-2xl mx-auto px-4 py-6">
         {/* Featured Book */}
-        <div className="mb-6">
-          <FeaturedBook book={featuredBook} />
-        </div>
+        {featuredBook && (
+          <div className="mb-6">
+            <FeaturedBook book={featuredBook} />
+          </div>
+        )}
 
         {/* Genre Tabs */}
         <div className="mb-6 overflow-x-auto scrollbar-hide">

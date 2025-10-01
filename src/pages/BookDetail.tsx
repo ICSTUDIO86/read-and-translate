@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Share2, BookOpen, Play, Pause, ChevronLeft, ChevronRight, Volume2, Languages, Edit } from 'lucide-react';
-import { books } from '@/types/book';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
@@ -10,12 +9,6 @@ import BookReader from '@/components/BookReader';
 import BookEditor from '@/components/BookEditor';
 import ShareMenu from '@/components/ShareMenu';
 import { getUploadedBooks } from '@/lib/supabaseStorage';
-import bookPsychologyMoney from '@/assets/book-psychology-money.jpg';
-import bookSapiens from '@/assets/book-sapiens.jpg';
-import bookDesignEveryday from '@/assets/book-design-everyday.jpg';
-import bookAtomicHabits from '@/assets/book-atomic-habits.jpg';
-import bookDeepWork from '@/assets/book-deep-work.jpg';
-import bookThinkingFastSlow from '@/assets/book-thinking-fast-slow.jpg';
 
 const BookDetail = () => {
   const { id } = useParams();
@@ -27,27 +20,12 @@ const BookDetail = () => {
   const [showTranslation, setShowTranslation] = useState(false);
   const [isReading, setIsReading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [currentBook, setCurrentBook] = useState<any>(() => {
-    // Try to find book in preset books first (no loading needed)
-    return books.find(b => b.id === id) || null;
-  });
-  const [isLoading, setIsLoading] = useState(() => {
-    // Only show loading if it's not a preset book
-    return !books.find(b => b.id === id);
-  });
+  const [currentBook, setCurrentBook] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Update current book when id changes
+  // Load book from uploaded books only
   useEffect(() => {
     const loadBook = async () => {
-      // Check preset books first (instant)
-      const presetBook = books.find(b => b.id === id);
-      if (presetBook) {
-        setCurrentBook(presetBook);
-        setIsLoading(false);
-        return;
-      }
-
-      // If not found in preset, load uploaded books
       setIsLoading(true);
       const uploadedBooks = await getUploadedBooks();
       const uploadedBook = uploadedBooks.find(b => b.id === id);
@@ -80,19 +58,10 @@ const BookDetail = () => {
     );
   }
 
-  // Check if this is an uploaded book
-  const isUploadedBook = currentBook.id.startsWith('uploaded-') || currentBook.id.startsWith('imported-');
+  // All books are uploaded books now
+  const isUploadedBook = true;
 
-  // Map image for preset books
-  let cover = currentBook.cover;
-  if (currentBook.id === '1') cover = bookPsychologyMoney;
-  if (currentBook.id === '2') cover = bookSapiens;
-  if (currentBook.id === '3') cover = bookDesignEveryday;
-  if (currentBook.id === '4') cover = bookAtomicHabits;
-  if (currentBook.id === '5') cover = bookDeepWork;
-  if (currentBook.id === '6') cover = bookThinkingFastSlow;
-
-  const book = { ...currentBook, cover };
+  const book = currentBook;
   const totalPages = book.pages;
 
   const handlePlayPause = () => {

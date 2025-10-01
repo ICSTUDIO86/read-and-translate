@@ -1,17 +1,10 @@
 import { useState } from 'react';
 import { Search, SlidersHorizontal } from 'lucide-react';
-import { books } from '@/types/book';
 import BookCard from '@/components/BookCard';
 import BottomNav from '@/components/BottomNav';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { useUploadedBooks } from '@/hooks/useUploadedBooks';
-import bookPsychologyMoney from '@/assets/book-psychology-money.jpg';
-import bookSapiens from '@/assets/book-sapiens.jpg';
-import bookDesignEveryday from '@/assets/book-design-everyday.jpg';
-import bookAtomicHabits from '@/assets/book-atomic-habits.jpg';
-import bookDeepWork from '@/assets/book-deep-work.jpg';
-import bookThinkingFastSlow from '@/assets/book-thinking-fast-slow.jpg';
 
 const filters = ['All Result', 'Free', 'Premium', 'Author', 'Genre'];
 
@@ -20,22 +13,8 @@ const SearchPage = () => {
   const [selectedFilter, setSelectedFilter] = useState('All Result');
   const { uploadedBooks } = useUploadedBooks();
 
-  // Map imported images to preset books
-  const booksWithImages = books.map(book => {
-    let cover = book.cover;
-    if (book.id === '1') cover = bookPsychologyMoney;
-    if (book.id === '2') cover = bookSapiens;
-    if (book.id === '3') cover = bookDesignEveryday;
-    if (book.id === '4') cover = bookAtomicHabits;
-    if (book.id === '5') cover = bookDeepWork;
-    if (book.id === '6') cover = bookThinkingFastSlow;
-    return { ...book, cover };
-  });
-
-  // Combine preset books and uploaded books
-  const allBooks = [...booksWithImages, ...uploadedBooks];
-
-  const filteredBooks = allBooks.filter(book => {
+  // Only search uploaded books
+  const filteredBooks = uploadedBooks.filter(book => {
     const matchesSearch = book.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          book.author.toLowerCase().includes(searchQuery.toLowerCase());
 
