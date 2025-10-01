@@ -655,13 +655,26 @@ const BookReader = ({ book, onProgressChange, onClose }: BookReaderProps) => {
     }
 
     // Find which paragraph we're currently in based on character offset
+    // Adjust currentCharIndex with readingStartOffset to account for starting position
+    const adjustedCharIndex = currentCharIndex + readingStartOffset;
+
     for (let i = paragraphCharOffsets.length - 1; i >= 0; i--) {
-      if (currentCharIndex >= paragraphCharOffsets[i]) {
+      if (adjustedCharIndex >= paragraphCharOffsets[i]) {
+        if (i !== readingParagraphIndex) {
+          console.log('[Highlight] Paragraph change:', {
+            from: readingParagraphIndex,
+            to: i,
+            currentCharIndex,
+            readingStartOffset,
+            adjustedCharIndex,
+            paragraphOffset: paragraphCharOffsets[i]
+          });
+        }
         setReadingParagraphIndex(i);
         break;
       }
     }
-  }, [currentCharIndex, isPlaying, paragraphCharOffsets]);
+  }, [currentCharIndex, isPlaying, paragraphCharOffsets, readingStartOffset]);
 
   // Helper function to render paragraph with word-level highlighting
   const renderParagraphWithHighlight = (paragraph: Paragraph, paragraphIndex: number) => {
