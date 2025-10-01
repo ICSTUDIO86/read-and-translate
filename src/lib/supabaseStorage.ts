@@ -3,6 +3,16 @@ import { supabase, isSupabaseConfigured } from './supabaseClient';
 import { Book } from '@/types/book';
 import * as localStorage from './storage';
 
+// Timeout helper to prevent long waits
+const withTimeout = <T>(promise: Promise<T>, timeoutMs: number = 3000): Promise<T> => {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error('Request timeout')), timeoutMs)
+    )
+  ]);
+};
+
 // Reading Progress
 interface ReadingProgress {
   bookId: string;
@@ -104,30 +114,44 @@ export const getReadingProgress = async (bookId: string): Promise<ReadingProgres
 };
 
 export const getAllReadingProgress = async (): Promise<ReadingProgress[]> => {
+  // Always try localStorage first for instant response
+  const localProgress = localStorage.getAllReadingProgress();
+
+  // If Supabase not configured, return local progress immediately
   if (!isSupabaseConfigured()) {
-    return localStorage.getAllReadingProgress();
+    return localProgress;
   }
 
   try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('Not authenticated');
+    // Use timeout to prevent long waits
+    const { data: { user } } = await withTimeout(supabase.auth.getUser(), 2000);
+    if (!user) {
+      console.log('[Storage] Not authenticated, using localStorage for progress');
+      return localProgress;
+    }
 
-    const { data, error } = await supabase
-      .from('reading_progress')
-      .select('*')
-      .eq('user_id', user.id);
+    const { data, error } = await withTimeout(
+      supabase
+        .from('reading_progress')
+        .select('*')
+        .eq('user_id', user.id),
+      3000
+    );
 
     if (error) throw error;
 
-    return (data || []).map(item => ({
+    const cloudProgress = (data || []).map(item => ({
       bookId: item.book_id,
       currentChapter: item.current_chapter,
       currentParagraph: item.current_paragraph,
       lastRead: item.last_read,
     }));
+
+    console.log('[Storage] Loaded reading progress from cloud:', cloudProgress.length);
+    return cloudProgress;
   } catch (error) {
-    console.error('Failed to get all reading progress from cloud:', error);
-    return localStorage.getAllReadingProgress();
+    console.warn('[Storage] Failed to get reading progress from cloud, using localStorage:', error);
+    return localProgress;
   }
 };
 
@@ -168,23 +192,34 @@ export const saveUploadedBook = async (book: Book): Promise<void> => {
 export const saveBook = saveUploadedBook; // Alias
 
 export const getUploadedBooks = async (): Promise<Book[]> => {
+  // Always try localStorage first for instant response
+  const localBooks = localStorage.getUploadedBooks();
+
+  // If Supabase not configured, return local books immediately
   if (!isSupabaseConfigured()) {
-    return localStorage.getUploadedBooks();
+    return localBooks;
   }
 
   try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('Not authenticated');
+    // Use timeout to prevent long waits (3 seconds max)
+    const { data: { user } } = await withTimeout(supabase.auth.getUser(), 2000);
+    if (!user) {
+      console.log('[Storage] Not authenticated, using localStorage');
+      return localBooks;
+    }
 
-    const { data, error } = await supabase
-      .from('books')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('uploaded_at', { ascending: false });
+    const { data, error } = await withTimeout(
+      supabase
+        .from('books')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('uploaded_at', { ascending: false }),
+      3000
+    );
 
     if (error) throw error;
 
-    return (data || []).map(item => ({
+    const cloudBooks = (data || []).map(item => ({
       id: item.id,
       title: item.title,
       author: item.author || 'Unknown',
@@ -198,9 +233,12 @@ export const getUploadedBooks = async (): Promise<Book[]> => {
       isFree: true,
       chapters: item.chapters,
     }));
+
+    console.log('[Storage] Loaded books from cloud:', cloudBooks.length);
+    return cloudBooks;
   } catch (error) {
-    console.error('Failed to get books from cloud:', error);
-    return localStorage.getUploadedBooks();
+    console.warn('[Storage] Failed to get books from cloud, using localStorage:', error);
+    return localBooks;
   }
 };
 
