@@ -129,10 +129,9 @@ async def synthesize():
         if cache_file.exists():
             print(f"[Edge TTS] Cache hit: {cache_key[:8]}...")
             return await send_file(
-                cache_file,
+                str(cache_file),
                 mimetype='audio/mpeg',
-                as_attachment=False,
-                download_name='speech.mp3'
+                as_attachment=False
             )
 
         # Generate new speech
@@ -146,10 +145,9 @@ async def synthesize():
         print(f"[Edge TTS] Saved to cache: {cache_key[:8]}...")
 
         return await send_file(
-            cache_file,
+            str(cache_file),
             mimetype='audio/mpeg',
-            as_attachment=False,
-            download_name='speech.mp3'
+            as_attachment=False
         )
 
     except Exception as e:
