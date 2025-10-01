@@ -245,11 +245,29 @@ const BookReader = ({ book, onProgressChange, onClose }: BookReaderProps) => {
     }
   };
 
-  const goToChapter = (chapterIndex: number) => {
+  const goToChapter = async (chapterIndex: number) => {
     setCurrentChapterIndex(chapterIndex);
     setCurrentPageInChapter(0);
     setShowChapterList(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    // Auto-translate new chapter if not already translated
+    const chapter = chapters[chapterIndex];
+    if (chapter) {
+      // Check if chapter has any translated content
+      const hasTranslatedContent = chapter.paragraphs?.some(p => p.type === 'translated' || p.translation);
+
+      if (!hasTranslatedContent) {
+        // Wait a moment for UI to settle, then auto-translate
+        setTimeout(async () => {
+          try {
+            await handleTranslateCurrentChapter();
+          } catch (error) {
+            console.error('[BookReader] Auto-translate failed:', error);
+          }
+        }, 500);
+      }
+    }
   };
 
   // Handle touch start
@@ -419,6 +437,66 @@ const BookReader = ({ book, onProgressChange, onClose }: BookReaderProps) => {
     setReadingParagraphIndex(-1);
     setParagraphCharOffsets([]);
     toast.info('Stopped reading');
+  };
+
+  // Start reading from a specific paragraph
+  const handleReadFromParagraph = (startParagraphIndex: number) => {
+    if (!isSupported) {
+      toast.error('Text-to-Speech not supported');
+      return;
+    }
+
+    // Stop current playback if any
+    if (isPlaying) {
+      stop();
+    }
+
+    // Calculate character offsets starting from the clicked paragraph
+    const offsets: number[] = [];
+    let currentOffset = 0;
+
+    currentPageParagraphs.forEach((p, idx) => {
+      if (idx < startParagraphIndex) {
+        offsets.push(0); // Paragraphs before start point
+      } else {
+        offsets.push(currentOffset);
+        if (!p.isImage) {
+          currentOffset += p.text.length + 2;
+        }
+      }
+    });
+
+    setParagraphCharOffsets(offsets);
+    setReadingParagraphIndex(startParagraphIndex);
+
+    // Get paragraphs from start point to end of page
+    const paragraphsToRead = currentPageParagraphs
+      .slice(startParagraphIndex)
+      .filter(p => {
+        if (p.isImage) return false;
+        const ttsLang = settings.ttsLanguage || 'original';
+        if (ttsLang === 'original') {
+          return !p.type || p.type === 'original';
+        } else {
+          return p.type === 'translated';
+        }
+      });
+
+    if (paragraphsToRead.length === 0) {
+      toast.warning('No text to read from this position');
+      return;
+    }
+
+    const textToRead = paragraphsToRead.map(p => p.text).join('. ');
+    const lang = settings.ttsLanguage === 'translated' ? 'zh-CN' : 'en-US';
+
+    try {
+      speak(textToRead, { lang, rate: 1.0 });
+      toast.success('Started reading from selected paragraph');
+    } catch (error) {
+      console.error('[BookReader] TTS error:', error);
+      toast.error('Failed to start reading');
+    }
   };
 
   // Check if book has translation
@@ -632,7 +710,12 @@ const BookReader = ({ book, onProgressChange, onClose }: BookReaderProps) => {
       if (paragraph.isHeading) {
         const HeadingTag = `h${paragraph.headingLevel || 4}` as keyof JSX.IntrinsicElements;
         return (
-          <HeadingTag className={cn("text-foreground", getHeadingStyle(paragraph.headingLevel))}>
+          <HeadingTag
+            className={cn("text-foreground", getHeadingStyle(paragraph.headingLevel))}
+            onClick={() => handleReadFromParagraph(paragraphIndex)}
+            style={{ cursor: 'pointer' }}
+            title="Click to read from here"
+          >
             {paragraph.text}
           </HeadingTag>
         );
@@ -641,12 +724,17 @@ const BookReader = ({ book, onProgressChange, onClose }: BookReaderProps) => {
       // Style translated paragraphs differently
       const isTranslated = paragraph.type === 'translated';
       return (
-        <p className={cn(
-          "leading-relaxed",
-          isTranslated
-            ? "text-muted-foreground text-sm italic bg-secondary/30 rounded-lg p-3 my-2"
-            : "text-foreground"
-        )}>
+        <p
+          className={cn(
+            "leading-relaxed",
+            isTranslated
+              ? "text-muted-foreground text-sm italic bg-secondary/30 rounded-lg p-3 my-2"
+              : "text-foreground",
+            "cursor-pointer hover:bg-secondary/20 transition-colors"
+          )}
+          onClick={() => handleReadFromParagraph(paragraphIndex)}
+          title="Click to read from here"
+        >
           {paragraph.text}
         </p>
       );
@@ -685,17 +773,26 @@ const BookReader = ({ book, onProgressChange, onClose }: BookReaderProps) => {
     if (paragraph.isHeading) {
       const HeadingTag = `h${paragraph.headingLevel || 4}` as keyof JSX.IntrinsicElements;
       return (
-        <HeadingTag className={cn(
-          "text-foreground bg-primary/10 rounded-lg p-4 transition-all duration-300",
-          getHeadingStyle(paragraph.headingLevel)
-        )}>
+        <HeadingTag
+          className={cn(
+            "text-foreground bg-primary/10 rounded-lg p-4 transition-all duration-300",
+            getHeadingStyle(paragraph.headingLevel),
+            "cursor-pointer hover:bg-primary/20"
+          )}
+          onClick={() => handleReadFromParagraph(paragraphIndex)}
+          title="Click to restart reading from here"
+        >
           {highlightedContent}
         </HeadingTag>
       );
     }
 
     return (
-      <p className="text-foreground leading-relaxed bg-primary/10 rounded-lg p-4 transition-all duration-300">
+      <p
+        className="text-foreground leading-relaxed bg-primary/10 rounded-lg p-4 transition-all duration-300 cursor-pointer hover:bg-primary/20"
+        onClick={() => handleReadFromParagraph(paragraphIndex)}
+        title="Click to restart reading from here"
+      >
         {highlightedContent}
       </p>
     );
@@ -736,6 +833,23 @@ const BookReader = ({ book, onProgressChange, onClose }: BookReaderProps) => {
         </div>
 
         <div className="flex gap-1">
+          <Button
+            variant={settings.showTranslation ? "default" : "ghost"}
+            size="icon"
+            onClick={() => {
+              const newShowTranslation = !settings.showTranslation;
+              setSettings({ ...settings, showTranslation: newShowTranslation });
+              saveReaderSettings({ ...settings, showTranslation: newShowTranslation });
+              if (newShowTranslation && !hasTranslation) {
+                toast.info('Translate the chapter first', {
+                  description: 'Click the translate button in settings to translate this chapter'
+                });
+              }
+            }}
+            title={settings.showTranslation ? "Hide Translation" : "Show Translation"}
+          >
+            <Languages className="h-5 w-5" />
+          </Button>
           <Button
             variant="ghost"
             size="icon"
