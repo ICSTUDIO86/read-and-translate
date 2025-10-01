@@ -194,9 +194,11 @@ export const saveBook = saveUploadedBook; // Alias
 export const getUploadedBooks = async (): Promise<Book[]> => {
   // Always try localStorage first for instant response
   const localBooks = localStorage.getUploadedBooks();
+  console.log('[Storage] getUploadedBooks - localStorage has:', localBooks.length, 'books');
 
   // If Supabase not configured, return local books immediately
   if (!isSupabaseConfigured()) {
+    console.log('[Storage] Supabase not configured, returning localStorage books');
     return localBooks;
   }
 
@@ -204,10 +206,11 @@ export const getUploadedBooks = async (): Promise<Book[]> => {
     // Use timeout to prevent long waits (3 seconds max)
     const { data: { user } } = await withTimeout(supabase.auth.getUser(), 2000);
     if (!user) {
-      console.log('[Storage] Not authenticated, using localStorage');
+      console.log('[Storage] Not authenticated, using localStorage with', localBooks.length, 'books');
       return localBooks;
     }
 
+    console.log('[Storage] Authenticated, fetching from Supabase...');
     const { data, error } = await withTimeout(
       supabase
         .from('books')
@@ -234,10 +237,17 @@ export const getUploadedBooks = async (): Promise<Book[]> => {
       chapters: item.chapters,
     }));
 
-    console.log('[Storage] Loaded books from cloud:', cloudBooks.length);
+    console.log('[Storage] ✓ Loaded', cloudBooks.length, 'books from Supabase');
+
+    // If cloud has books but localStorage doesn't, save to localStorage
+    if (cloudBooks.length > 0 && localBooks.length === 0) {
+      console.log('[Storage] Syncing cloud books to localStorage');
+      cloudBooks.forEach(book => localStorage.saveUploadedBook(book));
+    }
+
     return cloudBooks;
   } catch (error) {
-    console.warn('[Storage] Failed to get books from cloud, using localStorage:', error);
+    console.warn('[Storage] ✗ Failed to get books from Supabase, using localStorage with', localBooks.length, 'books:', error);
     return localBooks;
   }
 };

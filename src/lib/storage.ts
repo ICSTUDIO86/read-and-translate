@@ -218,9 +218,15 @@ export const saveBook = saveUploadedBook;
 export const getUploadedBooks = (): Book[] => {
   try {
     const stored = localStorage.getItem(STORAGE_KEYS.UPLOADED_BOOKS);
-    return stored ? JSON.parse(stored) : [];
+    if (!stored) {
+      console.log('[localStorage] No uploaded books found');
+      return [];
+    }
+    const books = JSON.parse(stored);
+    console.log('[localStorage] Loaded uploaded books:', books.length);
+    return books;
   } catch (error) {
-    console.error('Failed to get uploaded books:', error);
+    console.error('[localStorage] Failed to get uploaded books:', error);
     return [];
   }
 };
