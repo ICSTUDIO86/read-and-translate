@@ -73,7 +73,7 @@ export const generateSpeech = async (
   const ttsConfig = config || getEdgeTTSConfig();
 
   try {
-    const response = await fetch(`${ttsConfig.serverUrl}/tts`, {
+    const response = await fetch(`${ttsConfig.serverUrl}/synthesize`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
