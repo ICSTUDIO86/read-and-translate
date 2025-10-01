@@ -84,6 +84,7 @@ const BookReader = ({ book, onProgressChange, onClose }: BookReaderProps) => {
   // Track which paragraph is currently being read
   const [readingParagraphIndex, setReadingParagraphIndex] = useState<number>(-1);
   const [paragraphCharOffsets, setParagraphCharOffsets] = useState<number[]>([]);
+  const [readingStartOffset, setReadingStartOffset] = useState<number>(0); // Offset where reading started
 
   const chapters = book.chapters || [];
   const currentChapter = chapters[currentChapterIndex];
@@ -374,6 +375,7 @@ const BookReader = ({ book, onProgressChange, onClose }: BookReaderProps) => {
 
       setParagraphCharOffsets(offsets);
       setReadingParagraphIndex(0);
+      setReadingStartOffset(0); // Starting from beginning of page
 
       // Read the paragraphs on current page (excluding images)
       // Filter based on TTS language setting
@@ -436,6 +438,7 @@ const BookReader = ({ book, onProgressChange, onClose }: BookReaderProps) => {
     stop();
     setReadingParagraphIndex(-1);
     setParagraphCharOffsets([]);
+    setReadingStartOffset(0);
     toast.info('Stopped reading');
   };
 
@@ -449,25 +452,31 @@ const BookReader = ({ book, onProgressChange, onClose }: BookReaderProps) => {
     // Stop current playback if any
     if (isPlaying) {
       stop();
+      // Give a moment for stop to complete
+      setTimeout(() => {
+        startReadingFromParagraph(startParagraphIndex);
+      }, 100);
+    } else {
+      startReadingFromParagraph(startParagraphIndex);
     }
+  };
 
-    // Calculate character offsets starting from the clicked paragraph
+  const startReadingFromParagraph = (startParagraphIndex: number) => {
+    // Calculate character offsets for ALL paragraphs on the page
     const offsets: number[] = [];
     let currentOffset = 0;
 
     currentPageParagraphs.forEach((p, idx) => {
-      if (idx < startParagraphIndex) {
-        offsets.push(0); // Paragraphs before start point
-      } else {
-        offsets.push(currentOffset);
-        if (!p.isImage) {
-          currentOffset += p.text.length + 2;
-        }
+      offsets.push(currentOffset);
+      if (!p.isImage) {
+        currentOffset += p.text.length + 2; // +2 for '. ' separator
       }
     });
 
+    // Set the offsets and reading index
     setParagraphCharOffsets(offsets);
     setReadingParagraphIndex(startParagraphIndex);
+    setReadingStartOffset(offsets[startParagraphIndex] || 0); // Record where reading starts
 
     // Get paragraphs from start point to end of page
     const paragraphsToRead = currentPageParagraphs
@@ -489,6 +498,8 @@ const BookReader = ({ book, onProgressChange, onClose }: BookReaderProps) => {
 
     const textToRead = paragraphsToRead.map(p => p.text).join('. ');
     const lang = settings.ttsLanguage === 'translated' ? 'zh-CN' : 'en-US';
+
+    console.log('[BookReader] Starting from paragraph', startParagraphIndex, 'with offset', offsets[startParagraphIndex]);
 
     try {
       speak(textToRead, { lang, rate: 1.0 });
@@ -741,8 +752,10 @@ const BookReader = ({ book, onProgressChange, onClose }: BookReaderProps) => {
     }
 
     // Calculate character offset within the current paragraph
+    // Add readingStartOffset to currentCharIndex because TTS starts from 0 at the reading start point
+    const adjustedCharIndex = currentCharIndex + readingStartOffset;
     const paragraphStartOffset = paragraphCharOffsets[paragraphIndex] || 0;
-    const charIndexInParagraph = currentCharIndex - paragraphStartOffset;
+    const charIndexInParagraph = adjustedCharIndex - paragraphStartOffset;
 
     // Split text into words
     const words = paragraph.text.split(/(\s+)/); // Keep whitespace in array
@@ -1126,19 +1139,26 @@ const BookReader = ({ book, onProgressChange, onClose }: BookReaderProps) => {
           )}
 
           {/* Current Page Paragraphs */}
-          {currentPageParagraphs.map((paragraph, index) => (
-            <div key={paragraph.id} className="mb-6">
-              {renderParagraphWithHighlight(paragraph, index)}
+          {currentPageParagraphs.map((paragraph, index) => {
+            // Hide translated paragraphs when showTranslation is false
+            if (!settings.showTranslation && paragraph.type === 'translated') {
+              return null;
+            }
 
-              {settings.showTranslation && paragraph.translation && (
-                <div className="mt-4 p-4 bg-primary/5 rounded-xl border border-primary/20">
-                  <p className="text-foreground leading-relaxed">
-                    {paragraph.translation}
-                  </p>
-                </div>
-              )}
-            </div>
-          ))}
+            return (
+              <div key={paragraph.id} className="mb-6">
+                {renderParagraphWithHighlight(paragraph, index)}
+
+                {settings.showTranslation && paragraph.translation && (
+                  <div className="mt-4 p-4 bg-primary/5 rounded-xl border border-primary/20">
+                    <p className="text-foreground leading-relaxed">
+                      {paragraph.translation}
+                    </p>
+                  </div>
+                )}
+              </div>
+            );
+          })}
 
           {/* Page indicator at bottom */}
           <div className="text-center py-4 text-sm text-muted-foreground border-t border-border">
