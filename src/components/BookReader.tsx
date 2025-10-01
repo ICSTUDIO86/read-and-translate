@@ -5,7 +5,7 @@ import { ChevronLeft, ChevronRight, List, Settings2, Play, Pause, Volume2, Langu
 import { cn } from '@/lib/utils';
 import { useTTS } from '@/hooks/useTTS';
 import { toast } from 'sonner';
-import { saveReadingProgress, getReadingProgress, saveReaderSettings, getReaderSettings, saveBook } from '@/lib/storage';
+import { saveReadingProgress, getReadingProgress, saveReaderSettings, getReaderSettings, saveBook } from '@/lib/supabaseStorage';
 import { batchTranslate, getTranslationConfig } from '@/lib/translation';
 
 interface BookReaderProps {
@@ -24,11 +24,8 @@ interface ReaderSettings {
 }
 
 const BookReader = ({ book, onProgressChange, onClose }: BookReaderProps) => {
-  // Load saved progress or use book defaults
-  const savedProgress = getReadingProgress(book.id);
-  const [currentChapterIndex, setCurrentChapterIndex] = useState(
-    savedProgress?.currentChapter ?? book.currentChapter ?? 0
-  );
+  // State for current reading position
+  const [currentChapterIndex, setCurrentChapterIndex] = useState(book.currentChapter ?? 0);
   const [currentPageInChapter, setCurrentPageInChapter] = useState(0);
 
   // Load saved settings or use defaults
@@ -41,13 +38,36 @@ const BookReader = ({ book, onProgressChange, onClose }: BookReaderProps) => {
     ttsLanguage: 'original',
   };
 
-  const savedSettings = getReaderSettings();
   const [showChapterList, setShowChapterList] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [settings, setSettings] = useState<ReaderSettings>({
-    ...defaultSettings,
-    ...savedSettings,
-  });
+  const [settings, setSettings] = useState<ReaderSettings>(defaultSettings);
+
+  // Load saved progress and settings on mount
+  useEffect(() => {
+    const loadSavedData = async () => {
+      // Load saved reading progress
+      const savedProgress = await getReadingProgress(book.id);
+      if (savedProgress) {
+        setCurrentChapterIndex(savedProgress.currentChapter ?? 0);
+        // Calculate which page the saved paragraph is on
+        const chapters = book.chapters || [];
+        const chapter = chapters[savedProgress.currentChapter];
+        if (chapter) {
+          const paragraphsPerPage = defaultSettings.paragraphsPerPage;
+          const pageIndex = Math.floor(savedProgress.currentParagraph / paragraphsPerPage);
+          setCurrentPageInChapter(pageIndex);
+        }
+      }
+
+      // Load saved reader settings
+      const savedSettings = await getReaderSettings();
+      if (savedSettings) {
+        setSettings({ ...defaultSettings, ...savedSettings });
+      }
+    };
+
+    loadSavedData();
+  }, [book.id]);
 
   // Translation state
   const [isTranslating, setIsTranslating] = useState(false);
@@ -357,8 +377,14 @@ const BookReader = ({ book, onProgressChange, onClose }: BookReaderProps) => {
     setHasTranslation(hasTranslatedParagraphs);
   }, [book.chapters]);
 
-  // Translate entire book
-  const handleTranslateBook = async () => {
+  // Check if current chapter is already translated
+  const isCurrentChapterTranslated = () => {
+    if (!currentChapter) return false;
+    return currentChapter.paragraphs.some(p => p.type === 'translated');
+  };
+
+  // Translate current chapter only
+  const handleTranslateCurrentChapter = async () => {
     const config = getTranslationConfig();
 
     // Check if API key is required for the selected provider
@@ -369,8 +395,13 @@ const BookReader = ({ book, onProgressChange, onClose }: BookReaderProps) => {
       return;
     }
 
-    if (hasTranslation) {
-      toast.info('Book already translated');
+    if (!currentChapter) {
+      toast.error('No chapter selected');
+      return;
+    }
+
+    if (isCurrentChapterTranslated()) {
+      toast.info('This chapter is already translated');
       return;
     }
 
@@ -378,66 +409,87 @@ const BookReader = ({ book, onProgressChange, onClose }: BookReaderProps) => {
     setTranslationProgress({ current: 0, total: 0 });
 
     try {
-      // Count total paragraphs to translate
-      let totalParagraphs = 0;
-      book.chapters?.forEach(chapter => {
-        totalParagraphs += chapter.paragraphs.filter(p => !p.isImage && !p.isHeading).length;
+      // Collect all texts to translate in this chapter
+      const textsToTranslate: string[] = [];
+      const paragraphIndices: number[] = []; // Track which paragraphs need translation
+
+      currentChapter.paragraphs.forEach((paragraph, index) => {
+        if (!paragraph.isImage && !paragraph.isHeading) {
+          textsToTranslate.push(paragraph.text);
+          paragraphIndices.push(index);
+        }
       });
 
-      setTranslationProgress({ current: 0, total: totalParagraphs });
+      setTranslationProgress({ current: 0, total: textsToTranslate.length });
 
-      const translatedBook: Book = { ...book, chapters: [] };
-      let translatedCount = 0;
-
-      // Translate chapter by chapter
-      for (const chapter of book.chapters || []) {
-        const newParagraphs: Paragraph[] = [];
-
-        for (const paragraph of chapter.paragraphs) {
-          // Add original paragraph
-          newParagraphs.push({
-            ...paragraph,
-            type: 'original',
-            language: 'en',
+      // Batch translate all texts in this chapter
+      let translations: string[] = [];
+      if (textsToTranslate.length > 0) {
+        try {
+          translations = await batchTranslate(textsToTranslate, config, (current, total) => {
+            setTranslationProgress({ current, total });
           });
-
-          // Skip images and headings
-          if (paragraph.isImage || paragraph.isHeading) {
-            continue;
-          }
-
-          try {
-            // Translate paragraph
-            const translation = await batchTranslate([paragraph.text], config, (current, total) => {
-              translatedCount++;
-              setTranslationProgress({ current: translatedCount, total: totalParagraphs });
-            });
-
-            // Add translated paragraph
-            newParagraphs.push({
-              id: `${paragraph.id}_zh`,
-              text: translation[0],
-              type: 'translated',
-              language: 'zh',
-            });
-          } catch (error) {
-            console.error('Translation failed for paragraph:', paragraph.id, error);
-            toast.error('Translation failed for some paragraphs');
-          }
+        } catch (error) {
+          console.error('Batch translation failed for chapter:', currentChapter.title, error);
+          toast.error(`Translation failed for chapter: ${currentChapter.title}`);
+          setIsTranslating(false);
+          return;
         }
-
-        translatedBook.chapters?.push({
-          ...chapter,
-          paragraphs: newParagraphs,
-        });
       }
 
-      // Save translated book
-      saveBook(translatedBook);
-      setHasTranslation(true);
+      // Build new paragraphs array with originals and translations
+      const newParagraphs: Paragraph[] = [];
+      let translationIndex = 0;
 
-      toast.success('Translation complete!', {
-        description: `Translated ${translatedCount} paragraphs`,
+      for (let i = 0; i < currentChapter.paragraphs.length; i++) {
+        const paragraph = currentChapter.paragraphs[i];
+
+        // Add original paragraph
+        newParagraphs.push({
+          ...paragraph,
+          type: 'original',
+          language: 'en',
+        });
+
+        // Add translated paragraph if this one was translated
+        if (paragraphIndices.includes(i)) {
+          newParagraphs.push({
+            id: `${paragraph.id}_zh`,
+            text: translations[translationIndex] || `[Translation missing]`,
+            type: 'translated',
+            language: 'zh',
+          });
+          translationIndex++;
+        }
+      }
+
+      // Create updated book with the translated chapter
+      const updatedChapters = book.chapters?.map((chapter, index) => {
+        if (index === currentChapterIndex) {
+          return {
+            ...chapter,
+            paragraphs: newParagraphs,
+          };
+        }
+        return chapter;
+      }) || [];
+
+      const updatedBook: Book = {
+        ...book,
+        chapters: updatedChapters,
+      };
+
+      // Save updated book
+      await saveBook(updatedBook);
+
+      // Update hasTranslation status
+      const hasAnyTranslation = updatedBook.chapters?.some(ch =>
+        ch.paragraphs.some(p => p.type === 'translated')
+      );
+      setHasTranslation(hasAnyTranslation || false);
+
+      toast.success('Chapter translated!', {
+        description: `Translated ${textsToTranslate.length} paragraphs`,
       });
 
       // Reload the page to show translations
@@ -806,22 +858,50 @@ const BookReader = ({ book, onProgressChange, onClose }: BookReaderProps) => {
                 </div>
               </div>
 
+              {/* Show Translation Toggle */}
+              <div className="p-4 bg-card rounded-lg border-2 border-border">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">Show Translation</p>
+                    <p className="text-xs text-muted-foreground">
+                      {hasTranslation ? 'Display Chinese translation below text' : 'Translate the book first'}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setSettings({ ...settings, showTranslation: !settings.showTranslation })}
+                    disabled={!hasTranslation}
+                    className={cn(
+                      "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
+                      settings.showTranslation && hasTranslation ? "bg-primary" : "bg-secondary",
+                      !hasTranslation && "opacity-50 cursor-not-allowed"
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+                        settings.showTranslation ? "translate-x-6" : "translate-x-1"
+                      )}
+                    />
+                  </button>
+                </div>
+              </div>
+
               {/* Translation Button */}
               <div className="p-4 bg-card rounded-lg border-2 border-border">
                 <div className="flex items-center justify-between mb-2">
                   <div>
-                    <p className="font-medium">Translate Book</p>
+                    <p className="font-medium">Translate Chapter</p>
                     <p className="text-xs text-muted-foreground">
-                      {hasTranslation ? 'Book is already translated' : 'Translate entire book to Chinese'}
+                      {isCurrentChapterTranslated() ? 'This chapter is already translated' : `Translate current chapter (${currentChapter?.title || 'Unknown'})`}
                     </p>
                   </div>
                   <Button
-                    onClick={handleTranslateBook}
-                    disabled={isTranslating || hasTranslation}
+                    onClick={handleTranslateCurrentChapter}
+                    disabled={isTranslating || isCurrentChapterTranslated()}
                     size="sm"
                   >
                     <Languages className="h-4 w-4 mr-2" />
-                    {isTranslating ? 'Translating...' : hasTranslation ? 'Translated' : 'Translate'}
+                    {isTranslating ? 'Translating...' : isCurrentChapterTranslated() ? 'Translated' : 'Translate'}
                   </Button>
                 </div>
 

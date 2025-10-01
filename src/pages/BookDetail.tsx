@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils';
 import BookReader from '@/components/BookReader';
 import BookEditor from '@/components/BookEditor';
 import ShareMenu from '@/components/ShareMenu';
-import { getUploadedBooks } from '@/lib/storage';
+import { getUploadedBooks } from '@/lib/supabaseStorage';
 import bookPsychologyMoney from '@/assets/book-psychology-money.jpg';
 import bookSapiens from '@/assets/book-sapiens.jpg';
 import bookDesignEveryday from '@/assets/book-design-everyday.jpg';
@@ -31,13 +31,17 @@ const BookDetail = () => {
 
   // Update current book when id changes
   useEffect(() => {
-    const uploadedBooks = getUploadedBooks();
-    const allBooks = [...books, ...uploadedBooks];
-    const bookData = allBooks.find(b => b.id === id);
+    const loadBook = async () => {
+      const uploadedBooks = await getUploadedBooks();
+      const allBooks = [...books, ...uploadedBooks];
+      const bookData = allBooks.find(b => b.id === id);
 
-    if (bookData) {
-      setCurrentBook(bookData);
-    }
+      if (bookData) {
+        setCurrentBook(bookData);
+      }
+    };
+
+    loadBook();
   }, [id]);
 
   if (!currentBook) {

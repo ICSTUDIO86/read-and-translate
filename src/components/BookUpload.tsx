@@ -4,11 +4,11 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { parseBookFile, validateBookFile } from '@/lib/bookParser';
 import { importBookFromJSON } from '@/lib/bookExport';
-import { saveUploadedBook } from '@/lib/storage';
+import { saveUploadedBook } from '@/lib/supabaseStorage';
 import { toast } from 'sonner';
 
 interface BookUploadProps {
-  onUploadSuccess?: () => void;
+  onUploadSuccess?: (book: any) => void;
 }
 
 const BookUpload = ({ onUploadSuccess }: BookUploadProps) => {
@@ -79,15 +79,16 @@ const BookUpload = ({ onUploadSuccess }: BookUploadProps) => {
         throw new Error('No chapters found in the book');
       }
 
-      // Save to localStorage
-      saveUploadedBook(book);
+      // Save to storage (cloud + localStorage)
+      await saveUploadedBook(book);
 
       setUploadStatus('success');
       toast.success('Book uploaded successfully!', {
         description: `"${book.title}" (${book.chapters.length} chapters) has been added to your library`,
       });
 
-      onUploadSuccess?.();
+      // Pass the uploaded book to the callback for immediate UI update
+      onUploadSuccess?.(book);
     } catch (error) {
       console.error('Upload error:', error);
       setUploadStatus('error');

@@ -4,7 +4,7 @@
 export interface TranslationConfig {
   apiKey?: string; // Optional for LibreTranslate, required for Hugging Face
   targetLanguage: string; // Default: 'zh' (Chinese)
-  provider: 'libretranslate' | 'huggingface'; // Open-source providers
+  provider: 'libretranslate' | 'huggingface' | 'mymemory'; // Translation providers
   serverUrl?: string; // Custom server URL for LibreTranslate
 }
 
@@ -12,7 +12,7 @@ export interface TranslationConfig {
 export const getTranslationConfig = (): TranslationConfig => {
   const apiKey = localStorage.getItem('translation_api_key') || '';
   const targetLanguage = localStorage.getItem('translation_target_lang') || 'zh';
-  const provider = (localStorage.getItem('translation_provider') || 'huggingface') as TranslationConfig['provider'];
+  const provider = (localStorage.getItem('translation_provider') || 'mymemory') as TranslationConfig['provider'];
   const serverUrl = localStorage.getItem('translation_server_url') || 'https://libretranslate.com';
 
   return { apiKey, targetLanguage, provider, serverUrl };
@@ -91,6 +91,45 @@ const translateWithLibreTranslate = async (
   return data.translatedText.trim();
 };
 
+// Translate using MyMemory Translator (Free, no API key needed)
+const translateWithMyMemory = async (
+  text: string,
+  targetLang: string
+): Promise<string> => {
+  // MyMemory uses different language codes
+  const langMapping: Record<string, string> = {
+    'zh': 'zh-CN',
+    'zh-TW': 'zh-TW',
+    'en': 'en',
+    'es': 'es',
+    'fr': 'fr',
+    'de': 'de',
+    'ja': 'ja',
+    'ko': 'ko',
+    'ru': 'ru',
+    'pt': 'pt',
+    'it': 'it',
+    'ar': 'ar',
+  };
+
+  const targetCode = langMapping[targetLang] || 'zh-CN';
+  const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|${targetCode}`;
+
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    throw new Error(`MyMemory translation failed: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+
+  if (data.responseStatus === 200 && data.responseData) {
+    return data.responseData.translatedText;
+  }
+
+  throw new Error('MyMemory translation failed: Invalid response');
+};
+
 // Translate using Hugging Face translation models
 const translateWithHuggingFace = async (
   text: string,
@@ -151,6 +190,11 @@ export const translateParagraph = async (text: string, config?: TranslationConfi
 
   try {
     switch (translationConfig.provider) {
+      case 'mymemory':
+        return await translateWithMyMemory(
+          text,
+          translationConfig.targetLanguage
+        );
       case 'libretranslate':
         return await translateWithLibreTranslate(
           text,
@@ -183,6 +227,15 @@ export const translateParagraphs = async (
   onProgress?: (current: number, total: number) => void
 ): Promise<string[]> => {
   const results: string[] = [];
+  const translationConfig = config || getTranslationConfig();
+
+  // Adjust delay based on provider
+  // MyMemory is free but has rate limits - use moderate delay
+  // LibreTranslate is self-hosted so can handle faster requests
+  // HuggingFace has stricter rate limits
+  let delayMs = 200;
+  if (translationConfig.provider === 'libretranslate') delayMs = 100;
+  if (translationConfig.provider === 'mymemory') delayMs = 300; // Be nice to free service
 
   for (let i = 0; i < texts.length; i++) {
     try {
@@ -193,9 +246,9 @@ export const translateParagraphs = async (
         onProgress(i + 1, texts.length);
       }
 
-      // Rate limiting: wait 500ms between requests
+      // Rate limiting: shorter delay for better speed
       if (i < texts.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, delayMs));
       }
     } catch (error) {
       console.error(`Failed to translate paragraph ${i + 1}:`, error);

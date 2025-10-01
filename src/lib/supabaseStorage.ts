@@ -1,0 +1,542 @@
+// Supabase cloud storage layer - provides same API as localStorage storage
+import { supabase, isSupabaseConfigured } from './supabaseClient';
+import { Book } from '@/types/book';
+import * as localStorage from './storage';
+
+// Reading Progress
+interface ReadingProgress {
+  bookId: string;
+  currentChapter: number;
+  currentParagraph: number;
+  lastRead: string;
+}
+
+export const saveReadingProgress = async (progress: ReadingProgress): Promise<void> => {
+  if (!isSupabaseConfigured()) {
+    return localStorage.saveReadingProgress(progress);
+  }
+
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+
+    const { error } = await supabase
+      .from('reading_progress')
+      .upsert({
+        user_id: user.id,
+        book_id: progress.bookId,
+        current_chapter: progress.currentChapter,
+        current_paragraph: progress.currentParagraph,
+        last_read: progress.lastRead,
+      }, {
+        onConflict: 'user_id,book_id'
+      });
+
+    if (error) throw error;
+
+    // Also save to localStorage as backup
+    localStorage.saveReadingProgress(progress);
+  } catch (error) {
+    console.error('Failed to save reading progress to cloud:', error);
+    // Fallback to localStorage
+    localStorage.saveReadingProgress(progress);
+  }
+};
+
+export const getReadingProgress = async (bookId: string): Promise<ReadingProgress | null> => {
+  if (!isSupabaseConfigured()) {
+    return localStorage.getReadingProgress(bookId);
+  }
+
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+
+    const { data, error } = await supabase
+      .from('reading_progress')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('book_id', bookId)
+      .single();
+
+    if (error && error.code !== 'PGRST116') throw error; // PGRST116 = not found
+
+    if (data) {
+      return {
+        bookId: data.book_id,
+        currentChapter: data.current_chapter,
+        currentParagraph: data.current_paragraph,
+        lastRead: data.last_read,
+      };
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Failed to get reading progress from cloud:', error);
+    return localStorage.getReadingProgress(bookId);
+  }
+};
+
+export const getAllReadingProgress = async (): Promise<ReadingProgress[]> => {
+  if (!isSupabaseConfigured()) {
+    return localStorage.getAllReadingProgress();
+  }
+
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+
+    const { data, error } = await supabase
+      .from('reading_progress')
+      .select('*')
+      .eq('user_id', user.id);
+
+    if (error) throw error;
+
+    return (data || []).map(item => ({
+      bookId: item.book_id,
+      currentChapter: item.current_chapter,
+      currentParagraph: item.current_paragraph,
+      lastRead: item.last_read,
+    }));
+  } catch (error) {
+    console.error('Failed to get all reading progress from cloud:', error);
+    return localStorage.getAllReadingProgress();
+  }
+};
+
+// Uploaded Books
+export const saveUploadedBook = async (book: Book): Promise<void> => {
+  if (!isSupabaseConfigured()) {
+    return localStorage.saveUploadedBook(book);
+  }
+
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+
+    const { error } = await supabase
+      .from('books')
+      .upsert({
+        id: book.id,
+        user_id: user.id,
+        title: book.title,
+        author: book.author || null,
+        cover_url: book.cover || null,
+        chapters: book.chapters,
+      }, {
+        onConflict: 'id'
+      });
+
+    if (error) throw error;
+
+    // Also save to localStorage as backup
+    localStorage.saveUploadedBook(book);
+  } catch (error) {
+    console.error('Failed to save book to cloud:', error);
+    // Fallback to localStorage
+    localStorage.saveUploadedBook(book);
+  }
+};
+
+export const saveBook = saveUploadedBook; // Alias
+
+export const getUploadedBooks = async (): Promise<Book[]> => {
+  if (!isSupabaseConfigured()) {
+    return localStorage.getUploadedBooks();
+  }
+
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+
+    const { data, error } = await supabase
+      .from('books')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('uploaded_at', { ascending: false });
+
+    if (error) throw error;
+
+    return (data || []).map(item => ({
+      id: item.id,
+      title: item.title,
+      author: item.author || 'Unknown',
+      cover: item.cover_url && item.cover_url.trim() !== '' ? item.cover_url : `https://via.placeholder.com/400x600/f59e0b/ffffff?text=${encodeURIComponent(item.title.substring(0, 20))}`,
+      rating: 0,
+      pages: 0,
+      language: 'English',
+      audioLength: '0h0m',
+      genre: 'Uploaded',
+      synopsis: '',
+      isFree: true,
+      chapters: item.chapters,
+    }));
+  } catch (error) {
+    console.error('Failed to get books from cloud:', error);
+    return localStorage.getUploadedBooks();
+  }
+};
+
+export const deleteUploadedBook = async (bookId: string): Promise<void> => {
+  if (!isSupabaseConfigured()) {
+    return localStorage.deleteUploadedBook(bookId);
+  }
+
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+
+    const { error } = await supabase
+      .from('books')
+      .delete()
+      .eq('id', bookId)
+      .eq('user_id', user.id);
+
+    if (error) throw error;
+
+    // Also delete from localStorage
+    localStorage.deleteUploadedBook(bookId);
+  } catch (error) {
+    console.error('Failed to delete book from cloud:', error);
+    // Fallback to localStorage
+    localStorage.deleteUploadedBook(bookId);
+  }
+};
+
+// Favorites
+export const addFavorite = async (bookId: string): Promise<void> => {
+  if (!isSupabaseConfigured()) {
+    return localStorage.addFavorite(bookId);
+  }
+
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+
+    const { error } = await supabase
+      .from('favorites')
+      .insert({
+        user_id: user.id,
+        book_id: bookId,
+      });
+
+    if (error && error.code !== '23505') throw error; // 23505 = unique violation (already exists)
+
+    // Also save to localStorage
+    localStorage.addFavorite(bookId);
+  } catch (error) {
+    console.error('Failed to add favorite to cloud:', error);
+    localStorage.addFavorite(bookId);
+  }
+};
+
+export const removeFavorite = async (bookId: string): Promise<void> => {
+  if (!isSupabaseConfigured()) {
+    return localStorage.removeFavorite(bookId);
+  }
+
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+
+    const { error } = await supabase
+      .from('favorites')
+      .delete()
+      .eq('user_id', user.id)
+      .eq('book_id', bookId);
+
+    if (error) throw error;
+
+    // Also remove from localStorage
+    localStorage.removeFavorite(bookId);
+  } catch (error) {
+    console.error('Failed to remove favorite from cloud:', error);
+    localStorage.removeFavorite(bookId);
+  }
+};
+
+export const isFavorite = async (bookId: string): Promise<boolean> => {
+  if (!isSupabaseConfigured()) {
+    return localStorage.isFavorite(bookId);
+  }
+
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+
+    const { data, error } = await supabase
+      .from('favorites')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('book_id', bookId)
+      .single();
+
+    if (error && error.code !== 'PGRST116') throw error;
+
+    return !!data;
+  } catch (error) {
+    console.error('Failed to check favorite in cloud:', error);
+    return localStorage.isFavorite(bookId);
+  }
+};
+
+export const getFavorites = async (): Promise<string[]> => {
+  if (!isSupabaseConfigured()) {
+    return localStorage.getFavorites();
+  }
+
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+
+    const { data, error } = await supabase
+      .from('favorites')
+      .select('book_id')
+      .eq('user_id', user.id);
+
+    if (error) throw error;
+
+    return (data || []).map(item => item.book_id);
+  } catch (error) {
+    console.error('Failed to get favorites from cloud:', error);
+    return localStorage.getFavorites();
+  }
+};
+
+// Reader Settings
+interface ReaderSettings {
+  fontSize: number;
+  lineHeight: number;
+  fontFamily: string;
+  showTranslation: boolean;
+}
+
+export const saveReaderSettings = async (settings: ReaderSettings): Promise<void> => {
+  if (!isSupabaseConfigured()) {
+    return localStorage.saveReaderSettings(settings);
+  }
+
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+
+    const { error } = await supabase
+      .from('user_settings')
+      .upsert({
+        user_id: user.id,
+        reader_settings: settings,
+      }, {
+        onConflict: 'user_id'
+      });
+
+    if (error) throw error;
+
+    // Also save to localStorage
+    localStorage.saveReaderSettings(settings);
+  } catch (error) {
+    console.error('Failed to save reader settings to cloud:', error);
+    localStorage.saveReaderSettings(settings);
+  }
+};
+
+export const getReaderSettings = async (): Promise<ReaderSettings | null> => {
+  if (!isSupabaseConfigured()) {
+    return localStorage.getReaderSettings();
+  }
+
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+
+    const { data, error } = await supabase
+      .from('user_settings')
+      .select('reader_settings')
+      .eq('user_id', user.id)
+      .single();
+
+    if (error && error.code !== 'PGRST116') throw error;
+
+    return data?.reader_settings || null;
+  } catch (error) {
+    console.error('Failed to get reader settings from cloud:', error);
+    return localStorage.getReaderSettings();
+  }
+};
+
+// Reading Stats
+interface ReadingStats {
+  totalBooksRead: number;
+  totalTimeRead: number;
+  booksCompleted: string[];
+  currentStreak: number;
+  lastReadDate: string;
+}
+
+export const updateReadingStats = async (bookId: string, timeRead: number): Promise<void> => {
+  if (!isSupabaseConfigured()) {
+    return localStorage.updateReadingStats(bookId, timeRead);
+  }
+
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+
+    // Get current stats
+    const { data: currentData } = await supabase
+      .from('user_settings')
+      .select('reading_stats')
+      .eq('user_id', user.id)
+      .single();
+
+    const currentStats = currentData?.reading_stats || {
+      totalBooksRead: 0,
+      totalTimeRead: 0,
+      booksCompleted: [],
+      currentStreak: 0,
+      lastReadDate: new Date().toISOString(),
+    };
+
+    // Update stats
+    currentStats.totalTimeRead += timeRead;
+    const now = new Date().toISOString();
+    currentStats.lastReadDate = now;
+
+    // Update streak logic (simplified)
+    const lastRead = new Date(currentStats.lastReadDate);
+    const today = new Date();
+    const diffDays = Math.floor((today.getTime() - lastRead.getTime()) / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) {
+      // Same day
+    } else if (diffDays === 1) {
+      currentStats.currentStreak += 1;
+    } else {
+      currentStats.currentStreak = 1;
+    }
+
+    const { error } = await supabase
+      .from('user_settings')
+      .upsert({
+        user_id: user.id,
+        reading_stats: currentStats,
+      }, {
+        onConflict: 'user_id'
+      });
+
+    if (error) throw error;
+
+    // Also update localStorage
+    localStorage.updateReadingStats(bookId, timeRead);
+  } catch (error) {
+    console.error('Failed to update reading stats in cloud:', error);
+    localStorage.updateReadingStats(bookId, timeRead);
+  }
+};
+
+export const markBookCompleted = async (bookId: string): Promise<void> => {
+  if (!isSupabaseConfigured()) {
+    return localStorage.markBookCompleted(bookId);
+  }
+
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+
+    // Get current stats
+    const { data: currentData } = await supabase
+      .from('user_settings')
+      .select('reading_stats')
+      .eq('user_id', user.id)
+      .single();
+
+    const currentStats = currentData?.reading_stats || {
+      totalBooksRead: 0,
+      totalTimeRead: 0,
+      booksCompleted: [],
+      currentStreak: 0,
+      lastReadDate: new Date().toISOString(),
+    };
+
+    if (!currentStats.booksCompleted.includes(bookId)) {
+      currentStats.booksCompleted.push(bookId);
+      currentStats.totalBooksRead += 1;
+
+      const { error } = await supabase
+        .from('user_settings')
+        .upsert({
+          user_id: user.id,
+          reading_stats: currentStats,
+        }, {
+          onConflict: 'user_id'
+        });
+
+      if (error) throw error;
+    }
+
+    // Also update localStorage
+    localStorage.markBookCompleted(bookId);
+  } catch (error) {
+    console.error('Failed to mark book completed in cloud:', error);
+    localStorage.markBookCompleted(bookId);
+  }
+};
+
+export const getReadingStats = async (): Promise<ReadingStats> => {
+  if (!isSupabaseConfigured()) {
+    return localStorage.getReadingStats();
+  }
+
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+
+    const { data, error } = await supabase
+      .from('user_settings')
+      .select('reading_stats')
+      .eq('user_id', user.id)
+      .single();
+
+    if (error && error.code !== 'PGRST116') throw error;
+
+    return data?.reading_stats || {
+      totalBooksRead: 0,
+      totalTimeRead: 0,
+      booksCompleted: [],
+      currentStreak: 0,
+      lastReadDate: new Date().toISOString(),
+    };
+  } catch (error) {
+    console.error('Failed to get reading stats from cloud:', error);
+    return localStorage.getReadingStats();
+  }
+};
+
+// Clear all data
+export const clearAllData = async (): Promise<void> => {
+  if (!isSupabaseConfigured()) {
+    return localStorage.clearAllData();
+  }
+
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+
+    // Delete all user data
+    await Promise.all([
+      supabase.from('books').delete().eq('user_id', user.id),
+      supabase.from('reading_progress').delete().eq('user_id', user.id),
+      supabase.from('favorites').delete().eq('user_id', user.id),
+      supabase.from('user_settings').delete().eq('user_id', user.id),
+    ]);
+
+    // Also clear localStorage
+    localStorage.clearAllData();
+  } catch (error) {
+    console.error('Failed to clear data from cloud:', error);
+    localStorage.clearAllData();
+  }
+};
+
+// Export all existing localStorage functions for compatibility
+export * from './storage';

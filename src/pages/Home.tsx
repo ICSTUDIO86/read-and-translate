@@ -4,7 +4,8 @@ import FeaturedBook from '@/components/FeaturedBook';
 import BookCard from '@/components/BookCard';
 import BottomNav from '@/components/BottomNav';
 import { cn } from '@/lib/utils';
-import { getAllReadingProgress, getUploadedBooks } from '@/lib/storage';
+import { getAllReadingProgress } from '@/lib/supabaseStorage';
+import { useUploadedBooks } from '@/hooks/useUploadedBooks';
 import bookPsychologyMoney from '@/assets/book-psychology-money.jpg';
 import bookSapiens from '@/assets/book-sapiens.jpg';
 import bookDesignEveryday from '@/assets/book-design-everyday.jpg';
@@ -15,16 +16,16 @@ import bookThinkingFastSlow from '@/assets/book-thinking-fast-slow.jpg';
 const Home = () => {
   const [selectedGenre, setSelectedGenre] = useState('All Genre');
   const [readingProgress, setReadingProgress] = useState<any[]>([]);
-  const [uploadedBooks, setUploadedBooks] = useState<any[]>([]);
+  const { uploadedBooks } = useUploadedBooks();
 
   useEffect(() => {
-    // Load reading progress from localStorage
-    const progress = getAllReadingProgress();
-    setReadingProgress(progress);
+    // Load reading progress
+    const loadData = async () => {
+      const progress = await getAllReadingProgress();
+      setReadingProgress(progress);
+    };
 
-    // Load uploaded books
-    const uploaded = getUploadedBooks();
-    setUploadedBooks(uploaded);
+    loadData();
   }, []);
 
   // Map imported images to preset books and add progress

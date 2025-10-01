@@ -5,6 +5,7 @@ import BookCard from '@/components/BookCard';
 import BottomNav from '@/components/BottomNav';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+import { useUploadedBooks } from '@/hooks/useUploadedBooks';
 import bookPsychologyMoney from '@/assets/book-psychology-money.jpg';
 import bookSapiens from '@/assets/book-sapiens.jpg';
 import bookDesignEveryday from '@/assets/book-design-everyday.jpg';
@@ -17,8 +18,9 @@ const filters = ['All Result', 'Free', 'Premium', 'Author', 'Genre'];
 const SearchPage = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState('All Result');
+  const { uploadedBooks } = useUploadedBooks();
 
-  // Map imported images to books
+  // Map imported images to preset books
   const booksWithImages = books.map(book => {
     let cover = book.cover;
     if (book.id === '1') cover = bookPsychologyMoney;
@@ -30,13 +32,16 @@ const SearchPage = () => {
     return { ...book, cover };
   });
 
-  const filteredBooks = booksWithImages.filter(book => {
+  // Combine preset books and uploaded books
+  const allBooks = [...booksWithImages, ...uploadedBooks];
+
+  const filteredBooks = allBooks.filter(book => {
     const matchesSearch = book.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          book.author.toLowerCase().includes(searchQuery.toLowerCase());
-    
+
     if (selectedFilter === 'Free') return matchesSearch && book.isFree;
     if (selectedFilter === 'Premium') return matchesSearch && !book.isFree;
-    
+
     return matchesSearch;
   });
 

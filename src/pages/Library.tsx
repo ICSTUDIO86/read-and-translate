@@ -6,8 +6,9 @@ import BookUpload from '@/components/BookUpload';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Upload, Trash2 } from 'lucide-react';
-import { getUploadedBooks, deleteUploadedBook } from '@/lib/storage';
+import { getUploadedBooks, deleteUploadedBook } from '@/lib/supabaseStorage';
 import { toast } from 'sonner';
+import { triggerBooksUpdate } from '@/hooks/useUploadedBooks';
 import bookPsychologyMoney from '@/assets/book-psychology-money.jpg';
 import bookSapiens from '@/assets/book-sapiens.jpg';
 import bookDesignEveryday from '@/assets/book-design-everyday.jpg';
@@ -20,8 +21,8 @@ const Library = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
 
   // Load uploaded books
-  const loadUploadedBooks = () => {
-    const uploaded = getUploadedBooks();
+  const loadUploadedBooks = async () => {
+    const uploaded = await getUploadedBooks();
     setUploadedBooks(uploaded);
   };
 
@@ -43,15 +44,30 @@ const Library = () => {
 
   const myBooks = booksWithImages.filter(b => b.isFree);
 
-  const handleUploadSuccess = () => {
-    loadUploadedBooks();
+  const handleUploadSuccess = (newBook: any) => {
+    // Immediately add the new book to the list (optimistic update)
+    setUploadedBooks(prev => [newBook, ...prev]);
     setDialogOpen(false);
+
+    // Trigger global update event for other pages
+    triggerBooksUpdate();
   };
 
-  const handleDeleteBook = (bookId: string) => {
-    deleteUploadedBook(bookId);
-    loadUploadedBooks();
-    toast.success('Book deleted successfully');
+  const handleDeleteBook = async (bookId: string) => {
+    // Immediately remove from UI (optimistic update)
+    setUploadedBooks(prev => prev.filter(book => book.id !== bookId));
+
+    // Delete from storage in background
+    deleteUploadedBook(bookId).then(() => {
+      toast.success('Book deleted successfully');
+      // Trigger global update event for other pages
+      triggerBooksUpdate();
+    }).catch((err) => {
+      console.error('Failed to delete book:', err);
+      // Reload on error
+      loadUploadedBooks();
+      toast.error('Failed to delete book');
+    });
   };
 
   return (

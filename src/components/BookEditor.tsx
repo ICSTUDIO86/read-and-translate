@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Upload, Save, X, Image as ImageIcon } from 'lucide-react';
 import { toast } from 'sonner';
-import { saveUploadedBook } from '@/lib/storage';
+import { saveUploadedBook } from '@/lib/supabaseStorage';
 
 interface BookEditorProps {
   book: Book;
@@ -67,7 +67,7 @@ const BookEditor = ({ book, onSave, onCancel }: BookEditorProps) => {
     reader.readAsDataURL(file);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     // Validate required fields
     if (!editedBook.title.trim()) {
       toast.error('Title is required');
@@ -79,8 +79,8 @@ const BookEditor = ({ book, onSave, onCancel }: BookEditorProps) => {
       return;
     }
 
-    // Save to localStorage
-    saveUploadedBook(editedBook);
+    // Save to cloud storage
+    await saveUploadedBook(editedBook);
 
     toast.success('Book updated successfully');
     onSave?.(editedBook);

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { User, Settings, Heart, Download, HelpCircle, LogOut, Languages, Volume2, Upload, Save, Database } from 'lucide-react';
+import { User, Settings, Heart, Download, HelpCircle, LogOut, Languages, Volume2, Upload, Save, Database, Cloud, CloudOff, RefreshCw } from 'lucide-react';
 import BottomNav from '@/components/BottomNav';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,7 +9,10 @@ import { getTranslationConfig, saveTranslationConfig } from '@/lib/translation';
 import { getTTSConfig, saveTTSConfig, TTSEngine } from '@/lib/ttsConfig';
 import { checkServerHealth, getAvailableVoices, VoiceOption } from '@/lib/edgeTTS';
 import { checkXTTSServerHealth, getAvailableXTTSVoices } from '@/lib/xttsTTS';
-import { downloadAllData, importFromFile, exportAllData } from '@/lib/storage';
+import { downloadAllData, importFromFile, exportAllData } from '@/lib/supabaseStorage';
+import { useAuth } from '@/hooks/useAuth';
+import { useCloudSync } from '@/hooks/useCloudSync';
+import { isSupabaseConfigured } from '@/lib/supabaseClient';
 import {
   Dialog,
   DialogContent,
@@ -41,6 +44,11 @@ const Account = () => {
   const [ttsConfig, setTTSConfig] = useState(getTTSConfig());
   const [isServerHealthy, setIsServerHealthy] = useState<boolean | null>(null);
   const [availableVoices, setAvailableVoices] = useState<Record<string, VoiceOption[]>>({});
+
+  // Cloud sync hooks
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
+  const { syncing, progress, uploadLocalDataToCloud, downloadCloudDataToLocal, checkCloudStatus } = useCloudSync();
+  const [cloudStatus, setCloudStatus] = useState<any>(null);
 
   const handleSaveTranslationConfig = () => {
     saveTranslationConfig(translationConfig);
@@ -84,6 +92,41 @@ const Account = () => {
       handleTestXTTS();
     }
   }, [showTTSSettings]);
+
+  // Check cloud sync status on mount
+  useEffect(() => {
+    if (isSupabaseConfigured() && isAuthenticated) {
+      checkCloudStatus().then(setCloudStatus);
+    }
+  }, [isAuthenticated]);
+
+  // Cloud sync handlers
+  const handleUploadToCloud = async () => {
+    try {
+      const result = await uploadLocalDataToCloud();
+      toast.success(`Uploaded ${result.booksUploaded} books to cloud!`);
+      // Refresh cloud status
+      const status = await checkCloudStatus();
+      setCloudStatus(status);
+    } catch (error) {
+      toast.error('Failed to upload to cloud');
+    }
+  };
+
+  const handleDownloadFromCloud = async () => {
+    try {
+      const result = await downloadCloudDataToLocal();
+      toast.success(`Downloaded ${result.booksDownloaded} books from cloud!`);
+      setTimeout(() => window.location.reload(), 2000);
+    } catch (error) {
+      toast.error('Failed to download from cloud');
+    }
+  };
+
+  const handleRefreshCloudStatus = async () => {
+    const status = await checkCloudStatus();
+    setCloudStatus(status);
+  };
 
   return (
     <div className="min-h-screen bg-background pb-20">
@@ -181,17 +224,20 @@ const Account = () => {
                   value={translationConfig.provider}
                   onChange={(e) => setTranslationConfig({
                     ...translationConfig,
-                    provider: e.target.value as 'libretranslate' | 'huggingface'
+                    provider: e.target.value as 'libretranslate' | 'huggingface' | 'mymemory'
                   })}
                   className="w-full p-2 border rounded-md bg-background"
                 >
-                  <option value="huggingface">Hugging Face NLLB (Recommended - Meta's Best Model)</option>
-                  <option value="libretranslate">LibreTranslate (Self-hosted or API Key Required)</option>
+                  <option value="mymemory">MyMemory (Recommended - Free, No Setup)</option>
+                  <option value="libretranslate">LibreTranslate (May Require API Key)</option>
+                  <option value="huggingface">Hugging Face NLLB (Requires Free API Key)</option>
                 </select>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {translationConfig.provider === 'libretranslate'
-                    ? 'Requires API key from portal.libretranslate.com or self-hosted instance'
-                    : 'Meta\'s No Language Left Behind model - best quality. Get FREE API key from huggingface.co'}
+                  {translationConfig.provider === 'mymemory'
+                    ? 'Free translation service - no registration needed, works instantly'
+                    : translationConfig.provider === 'libretranslate'
+                    ? 'Some public instances require API key from portal.libretranslate.com'
+                    : 'Meta\'s NLLB model - best quality. Get FREE API key from huggingface.co/settings/tokens'}
                 </p>
               </div>
 
@@ -534,33 +580,151 @@ const Account = () => {
           </DialogContent>
         </Dialog>
 
-        {/* Data Sync Section */}
-        <Card className="bg-card">
+        {/* Cloud Sync Section */}
+        {isSupabaseConfigured() && (
+          <Card className="bg-card mb-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                {isAuthenticated ? (
+                  <Cloud className="h-5 w-5 text-green-600" />
+                ) : (
+                  <CloudOff className="h-5 w-5 text-muted-foreground" />
+                )}
+                Cloud Sync
+              </CardTitle>
+              <CardDescription>
+                Automatically sync your data across all devices with cloud storage
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Cloud Status */}
+              <div className="bg-muted p-4 rounded-md space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Status:</span>
+                  <span className={`text-sm font-semibold ${isAuthenticated ? 'text-green-600' : 'text-muted-foreground'}`}>
+                    {isAuthenticated ? '✓ Connected' : '○ Not connected'}
+                  </span>
+                </div>
+                {cloudStatus && cloudStatus.authenticated && (
+                  <>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Cloud Books:</span>
+                      <span className="font-medium">{cloudStatus.cloudBooks || 0}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Local Books:</span>
+                      <span className="font-medium">{cloudStatus.localBooks || 0}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Reading Progress:</span>
+                      <span className="font-medium">{cloudStatus.cloudProgress || 0}</span>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Sync Actions */}
+              {isAuthenticated && (
+                <>
+                  <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 p-3 rounded-md">
+                    <p className="text-xs text-blue-800 dark:text-blue-300 font-medium mb-2">
+                      ℹ️ First Time Setup
+                    </p>
+                    <p className="text-xs text-blue-700 dark:text-blue-400">
+                      If this is your first device, click "Upload to Cloud" to save your existing data.
+                      On other devices, click "Download from Cloud" to sync your books.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Button
+                      variant="default"
+                      className="w-full"
+                      onClick={handleUploadToCloud}
+                      disabled={syncing}
+                    >
+                      {syncing ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                          Uploading... {Math.round(progress)}%
+                        </>
+                      ) : (
+                        <>
+                          <Cloud className="h-4 w-4 mr-2" />
+                          Upload Local Data to Cloud
+                        </>
+                      )}
+                    </Button>
+
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={handleDownloadFromCloud}
+                      disabled={syncing}
+                    >
+                      {syncing ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                          Downloading... {Math.round(progress)}%
+                        </>
+                      ) : (
+                        <>
+                          <Download className="h-4 w-4 mr-2" />
+                          Download Cloud Data to Local
+                        </>
+                      )}
+                    </Button>
+
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full"
+                      onClick={handleRefreshCloudStatus}
+                    >
+                      <RefreshCw className="h-3 w-3 mr-2" />
+                      Refresh Status
+                    </Button>
+                  </div>
+
+                  <p className="text-xs text-muted-foreground text-center">
+                    🔒 Your data is securely stored and only accessible by you
+                  </p>
+                </>
+              )}
+
+              {!isAuthenticated && (
+                <div className="text-center py-4">
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Connecting to cloud...
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Manual Data Export/Import (Backup Method) */}
+        <Card className="bg-card mb-6">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Database className="h-5 w-5" />
-              Data Sync
+              Manual Backup
             </CardTitle>
             <CardDescription>
-              Export and import your books, reading progress, and settings to sync across devices
+              Export and import your data as JSON files for manual transfer
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="bg-muted p-4 rounded-md space-y-2 text-sm">
               <p className="text-muted-foreground">
-                <strong>Why sync?</strong> Your books are stored locally in your browser.
-                Use this feature to transfer data between devices or backup your library.
+                <strong>Alternative sync method:</strong> Use this if you prefer manual control
+                or cloud sync is unavailable.
               </p>
-              <ul className="list-disc list-inside text-muted-foreground space-y-1 ml-2">
-                <li>Export your data on one device</li>
-                <li>Import it on another device</li>
-                <li>Works across computers, phones, and tablets</li>
-              </ul>
             </div>
 
             <div className="flex gap-2">
               <Button
-                variant="default"
+                variant="outline"
                 className="flex-1"
                 onClick={() => {
                   try {
@@ -573,7 +737,7 @@ const Account = () => {
                 }}
               >
                 <Download className="h-4 w-4 mr-2" />
-                Export All Data
+                Export JSON
               </Button>
 
               <Button
@@ -599,13 +763,9 @@ const Account = () => {
                 }}
               >
                 <Upload className="h-4 w-4 mr-2" />
-                Import Data
+                Import JSON
               </Button>
             </div>
-
-            <p className="text-xs text-muted-foreground text-center">
-              Import mode: Merge (keeps existing books, adds new ones)
-            </p>
           </CardContent>
         </Card>
 

@@ -11,16 +11,23 @@ interface BookCardProps {
 const BookCard = ({ book, className }: BookCardProps) => {
   const navigate = useNavigate();
 
+  // Fallback cover if none exists
+  const coverUrl = book.cover || `https://via.placeholder.com/400x600/f59e0b/ffffff?text=${encodeURIComponent(book.title.substring(0, 20))}`;
+
   return (
-    <div 
+    <div
       className={cn("cursor-pointer group", className)}
       onClick={() => navigate(`/book/${book.id}`)}
     >
       <div className="relative aspect-[2/3] rounded-2xl overflow-hidden shadow-md mb-3 transition-transform duration-300 group-hover:scale-105">
-        <img 
-          src={book.cover} 
+        <img
+          src={coverUrl}
           alt={book.title}
           className="w-full h-full object-cover"
+          onError={(e) => {
+            // Fallback to placeholder if image fails to load
+            e.currentTarget.src = `https://via.placeholder.com/400x600/f59e0b/ffffff?text=${encodeURIComponent(book.title.substring(0, 20))}`;
+          }}
         />
         {book.progress && (
           <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/20">
