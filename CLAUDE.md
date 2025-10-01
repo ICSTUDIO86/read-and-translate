@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a React-based e-book reader application with AI-powered text-to-speech, file upload support (EPUB, PDF, TXT), and bilingual reading features. Built with Vite, TypeScript, React, shadcn-ui, and Tailwind CSS.
+This is a React-based e-book reader application with multi-engine text-to-speech, file upload support (EPUB, PDF, TXT), bilingual reading with translation, and cloud sync via Supabase. Built with Vite, TypeScript, React, shadcn-ui, and Tailwind CSS.
 
 ## Development Commands
 
@@ -27,6 +27,24 @@ npm run lint
 # Preview production build
 npm run preview
 ```
+
+## Environment Variables
+
+Optional configuration via `.env` file (not required for basic functionality):
+
+```bash
+# Supabase cloud sync (optional)
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
+
+# Edge TTS server (optional, requires separate backend)
+VITE_EDGE_TTS_URL=http://localhost:5002
+
+# XTTS v2 server (optional, requires separate backend)
+VITE_XTTS_URL=http://localhost:5001
+```
+
+Without these, the app works with localStorage and browser TTS only.
 
 ## Architecture
 
@@ -65,11 +83,24 @@ Books can be:
 - Tracks word boundaries via `onboundary` events
 - Returns `currentCharIndex` and `currentWordIndex` for highlighting
 
-**Storage** (`src/lib/storage.ts`)
-- Manages localStorage for:
-  - Reading progress (book ID, chapter, paragraph)
-  - Reader settings (font size, line height, paragraphs per page)
-  - User's library (uploaded books)
+**Storage** (`src/lib/storage.ts` and `src/lib/supabaseStorage.ts`)
+- Hybrid storage system with localStorage and optional Supabase cloud sync
+- `supabaseStorage.ts` provides same API as `storage.ts` with automatic fallback
+- Stores: reading progress, reader settings, user library, favorites, reading stats
+- Requires env vars: `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` for cloud features
+- If Supabase not configured, gracefully falls back to localStorage only
+
+**TTS Configuration** (`src/lib/ttsConfig.ts`)
+- Supports three engines: Web Speech API (browser-native), Edge TTS, XTTS v2
+- Edge TTS and XTTS require separate backend servers (configured via env)
+- Auto-detects language from text content (Chinese, Japanese, Korean, English)
+- Configurable per engine: voice, rate, pitch, speed
+
+**Translation** (`src/lib/translation.ts`)
+- Three providers: MyMemory (default, free), LibreTranslate, Hugging Face
+- MyMemory requires no API key; LibreTranslate can use public instance or self-hosted
+- Hugging Face requires free API key from huggingface.co
+- Supports batch translation with rate limiting and progress callbacks
 
 ### Routing Structure
 
@@ -109,8 +140,9 @@ If images aren't appearing, check browser console for:
 
 ## State Management
 
-- **React Query**: API data fetching (configured in App.tsx)
-- **LocalStorage**: All persistent data (books, progress, settings)
+- **React Query**: API data fetching and cache management
+- **Storage Layer**: Hybrid localStorage + Supabase cloud sync (via `supabaseStorage.ts`)
+- **Supabase Auth**: Email-based authentication for cross-device sync
 - **React Router**: Navigation state
 
 ## UI Components
@@ -124,6 +156,8 @@ Built with shadcn-ui components (Radix UI + Tailwind):
 
 - The development server runs on port 8080 (configured in vite.config.ts)
 - PDF.js worker loads from unpkg CDN
-- All book data (including images) stored in localStorage has ~5-10MB limit per origin
-- TTS is browser-native and may have limited voice options
-- Reading progress auto-saves on chapter/page change
+- LocalStorage has ~5-10MB limit; cloud sync via Supabase has no practical limit
+- TTS: Web Speech API works everywhere; Edge TTS and XTTS require backend servers
+- Translation: MyMemory (default) works without setup; others need configuration
+- All cloud features (Supabase sync, advanced TTS) are optional and gracefully degrade
+- Reading progress auto-saves to both localStorage and cloud (if authenticated)
