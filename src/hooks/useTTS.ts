@@ -17,7 +17,7 @@ export const useTTS = () => {
   const [isSupported, setIsSupported] = useState(false);
   const [currentWordIndex, setCurrentWordIndex] = useState(-1);
   const [currentCharIndex, setCurrentCharIndex] = useState(0);
-  const [currentEngine, setCurrentEngine] = useState<'web-speech' | 'edge-tts'>('web-speech');
+  const [currentEngine, setCurrentEngine] = useState<'web-speech' | 'edge-tts' | 'xtts'>('web-speech');
 
   // Web Speech API refs
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
@@ -25,6 +25,8 @@ export const useTTS = () => {
   // Edge TTS refs
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const charsPerSecondRef = useRef<number>(0);
 
   // Common refs
   const textQueueRef = useRef<string[]>([]);
@@ -61,6 +63,12 @@ export const useTTS = () => {
       // Cleanup on unmount
       if (window.speechSynthesis) {
         window.speechSynthesis.cancel();
+      }
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+      if (audioRef.current) {
+        audioRef.current.pause();
       }
     };
   }, []);
@@ -168,6 +176,12 @@ export const useTTS = () => {
         audioRef.current = null;
       }
 
+      // Cancel any ongoing animation frame
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+
       // Store current text
       currentTextRef.current = text;
 
@@ -209,6 +223,7 @@ export const useTTS = () => {
       audio.onloadedmetadata = () => {
         const actualDuration = audio.duration;
         const charsPerSecond = text.length / actualDuration;
+        charsPerSecondRef.current = charsPerSecond;
 
         console.log('[Edge TTS] Audio loaded:', {
           duration: actualDuration,
@@ -216,10 +231,10 @@ export const useTTS = () => {
           charsPerSecond: charsPerSecond.toFixed(2)
         });
 
-        // Use timeupdate for more accurate character tracking
-        audio.ontimeupdate = () => {
-          if (!audio.paused) {
-            const currentTime = audio.currentTime;
+        // Use requestAnimationFrame for smooth 60fps character tracking
+        const updateCharacterPosition = () => {
+          if (audioRef.current && !audioRef.current.paused) {
+            const currentTime = audioRef.current.currentTime;
             const estimatedCharIndex = Math.floor(currentTime * charsPerSecond);
             const boundedCharIndex = Math.min(estimatedCharIndex, text.length - 1);
 
@@ -229,26 +244,42 @@ export const useTTS = () => {
             const textUpToNow = text.substring(0, boundedCharIndex);
             const wordsUpToNow = textUpToNow.split(/\s+/).filter(w => w.length > 0);
             setCurrentWordIndex(wordsUpToNow.length - 1);
+
+            // Continue animation loop
+            animationFrameRef.current = requestAnimationFrame(updateCharacterPosition);
           }
         };
 
         audio.onended = () => {
+          // Cancel animation frame
+          if (animationFrameRef.current) {
+            cancelAnimationFrame(animationFrameRef.current);
+            animationFrameRef.current = null;
+          }
+
+          // If there are more texts in queue, don't reset yet
+          if (textQueueRef.current.length > 0) {
+            const nextText = textQueueRef.current.shift();
+            if (nextText) {
+              speak(nextText, options);
+              return;
+            }
+          }
+
+          // Only reset when all content is finished
           setIsPlaying(false);
           setIsPaused(false);
           setCurrentWordIndex(-1);
           setCurrentCharIndex(0);
           URL.revokeObjectURL(audioUrl);
-
-          // If there are more texts in queue, speak the next one
-          if (textQueueRef.current.length > 0) {
-            const nextText = textQueueRef.current.shift();
-            if (nextText) {
-              speak(nextText, options);
-            }
-          }
         };
 
         audio.onpause = () => {
+          // Cancel animation frame when paused
+          if (animationFrameRef.current) {
+            cancelAnimationFrame(animationFrameRef.current);
+            animationFrameRef.current = null;
+          }
           if (audio.currentTime < audio.duration) {
             setIsPaused(true);
           }
@@ -256,6 +287,10 @@ export const useTTS = () => {
 
         audio.onplay = () => {
           setIsPaused(false);
+          // Start animation loop when playing
+          if (!animationFrameRef.current) {
+            animationFrameRef.current = requestAnimationFrame(updateCharacterPosition);
+          }
         };
       };
 
@@ -294,6 +329,12 @@ export const useTTS = () => {
         audioRef.current = null;
       }
 
+      // Cancel any ongoing animation frame
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+
       // Store current text
       currentTextRef.current = text;
 
@@ -326,6 +367,7 @@ export const useTTS = () => {
       audio.onloadedmetadata = () => {
         const actualDuration = audio.duration;
         const charsPerSecond = text.length / actualDuration;
+        charsPerSecondRef.current = charsPerSecond;
 
         console.log('[XTTS] Audio loaded:', {
           duration: actualDuration,
@@ -333,10 +375,10 @@ export const useTTS = () => {
           charsPerSecond: charsPerSecond.toFixed(2)
         });
 
-        // Use timeupdate for more accurate character tracking
-        audio.ontimeupdate = () => {
-          if (!audio.paused) {
-            const currentTime = audio.currentTime;
+        // Use requestAnimationFrame for smooth 60fps character tracking
+        const updateCharacterPosition = () => {
+          if (audioRef.current && !audioRef.current.paused) {
+            const currentTime = audioRef.current.currentTime;
             const estimatedCharIndex = Math.floor(currentTime * charsPerSecond);
             const boundedCharIndex = Math.min(estimatedCharIndex, text.length - 1);
 
@@ -346,26 +388,42 @@ export const useTTS = () => {
             const textUpToNow = text.substring(0, boundedCharIndex);
             const wordsUpToNow = textUpToNow.split(/\s+/).filter(w => w.length > 0);
             setCurrentWordIndex(wordsUpToNow.length - 1);
+
+            // Continue animation loop
+            animationFrameRef.current = requestAnimationFrame(updateCharacterPosition);
           }
         };
 
         audio.onended = () => {
+          // Cancel animation frame
+          if (animationFrameRef.current) {
+            cancelAnimationFrame(animationFrameRef.current);
+            animationFrameRef.current = null;
+          }
+
+          // If there are more texts in queue, don't reset yet
+          if (textQueueRef.current.length > 0) {
+            const nextText = textQueueRef.current.shift();
+            if (nextText) {
+              speak(nextText, options);
+              return;
+            }
+          }
+
+          // Only reset when all content is finished
           setIsPlaying(false);
           setIsPaused(false);
           setCurrentWordIndex(-1);
           setCurrentCharIndex(0);
           URL.revokeObjectURL(audioUrl);
-
-          // If there are more texts in queue, speak the next one
-          if (textQueueRef.current.length > 0) {
-            const nextText = textQueueRef.current.shift();
-            if (nextText) {
-              speak(nextText, options);
-            }
-          }
         };
 
         audio.onpause = () => {
+          // Cancel animation frame when paused
+          if (animationFrameRef.current) {
+            cancelAnimationFrame(animationFrameRef.current);
+            animationFrameRef.current = null;
+          }
           if (audio.currentTime < audio.duration) {
             setIsPaused(true);
           }
@@ -373,6 +431,10 @@ export const useTTS = () => {
 
         audio.onplay = () => {
           setIsPaused(false);
+          // Start animation loop when playing
+          if (!animationFrameRef.current) {
+            animationFrameRef.current = requestAnimationFrame(updateCharacterPosition);
+          }
         };
       };
 
@@ -418,7 +480,7 @@ export const useTTS = () => {
   }, [speakWithXTTS, speakWithEdgeTTS, speakWithWebSpeech]);
 
   const pause = useCallback(() => {
-    if (currentEngine === 'edge-tts' && audioRef.current) {
+    if ((currentEngine === 'edge-tts' || currentEngine === 'xtts') && audioRef.current) {
       audioRef.current.pause();
       setIsPaused(true);
     } else if (currentEngine === 'web-speech') {
@@ -430,7 +492,7 @@ export const useTTS = () => {
   }, [currentEngine]);
 
   const resume = useCallback(() => {
-    if (currentEngine === 'edge-tts' && audioRef.current) {
+    if ((currentEngine === 'edge-tts' || currentEngine === 'xtts') && audioRef.current) {
       audioRef.current.play();
       setIsPaused(false);
     } else if (currentEngine === 'web-speech') {
@@ -447,10 +509,16 @@ export const useTTS = () => {
       window.speechSynthesis.cancel();
     }
 
-    // Stop Edge TTS
+    // Stop Edge TTS / XTTS
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current = null;
+    }
+
+    // Cancel animation frame
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
     }
 
     setIsPlaying(false);
