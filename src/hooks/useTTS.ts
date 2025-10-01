@@ -206,27 +206,33 @@ export const useTTS = () => {
       const audio = new Audio(audioUrl);
       audio.volume = options.volume || 1.0;
 
-      // Calculate approximate word timings for highlighting
-      const words = text.split(/\s+/).filter(w => w.length > 0);
-      const estimatedDuration = text.length / 10; // Rough estimate: 10 chars per second
-
       audio.onloadedmetadata = () => {
         const actualDuration = audio.duration;
-        const timePerWord = actualDuration / words.length;
+        const charsPerSecond = text.length / actualDuration;
 
-        // Update word index periodically
-        let currentWord = 0;
-        const interval = setInterval(() => {
-          if (!audio.paused && currentWord < words.length) {
-            setCurrentWordIndex(currentWord);
-            currentWord++;
-          } else {
-            clearInterval(interval);
+        console.log('[Edge TTS] Audio loaded:', {
+          duration: actualDuration,
+          textLength: text.length,
+          charsPerSecond: charsPerSecond.toFixed(2)
+        });
+
+        // Use timeupdate for more accurate character tracking
+        audio.ontimeupdate = () => {
+          if (!audio.paused) {
+            const currentTime = audio.currentTime;
+            const estimatedCharIndex = Math.floor(currentTime * charsPerSecond);
+            const boundedCharIndex = Math.min(estimatedCharIndex, text.length - 1);
+
+            setCurrentCharIndex(boundedCharIndex);
+
+            // Also update word index for compatibility
+            const textUpToNow = text.substring(0, boundedCharIndex);
+            const wordsUpToNow = textUpToNow.split(/\s+/).filter(w => w.length > 0);
+            setCurrentWordIndex(wordsUpToNow.length - 1);
           }
-        }, timePerWord * 1000);
+        };
 
         audio.onended = () => {
-          clearInterval(interval);
           setIsPlaying(false);
           setIsPaused(false);
           setCurrentWordIndex(-1);
@@ -317,26 +323,33 @@ export const useTTS = () => {
       const audio = new Audio(audioUrl);
       audio.volume = options.volume || 1.0;
 
-      // Calculate approximate word timings for highlighting
-      const words = text.split(/\s+/).filter(w => w.length > 0);
-
       audio.onloadedmetadata = () => {
         const actualDuration = audio.duration;
-        const timePerWord = actualDuration / words.length;
+        const charsPerSecond = text.length / actualDuration;
 
-        // Update word index periodically
-        let currentWord = 0;
-        const interval = setInterval(() => {
-          if (!audio.paused && currentWord < words.length) {
-            setCurrentWordIndex(currentWord);
-            currentWord++;
-          } else {
-            clearInterval(interval);
+        console.log('[XTTS] Audio loaded:', {
+          duration: actualDuration,
+          textLength: text.length,
+          charsPerSecond: charsPerSecond.toFixed(2)
+        });
+
+        // Use timeupdate for more accurate character tracking
+        audio.ontimeupdate = () => {
+          if (!audio.paused) {
+            const currentTime = audio.currentTime;
+            const estimatedCharIndex = Math.floor(currentTime * charsPerSecond);
+            const boundedCharIndex = Math.min(estimatedCharIndex, text.length - 1);
+
+            setCurrentCharIndex(boundedCharIndex);
+
+            // Also update word index for compatibility
+            const textUpToNow = text.substring(0, boundedCharIndex);
+            const wordsUpToNow = textUpToNow.split(/\s+/).filter(w => w.length > 0);
+            setCurrentWordIndex(wordsUpToNow.length - 1);
           }
-        }, timePerWord * 1000);
+        };
 
         audio.onended = () => {
-          clearInterval(interval);
           setIsPlaying(false);
           setIsPaused(false);
           setCurrentWordIndex(-1);
