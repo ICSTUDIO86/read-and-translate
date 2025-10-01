@@ -171,11 +171,17 @@ def clear_cache():
 
 
 if __name__ == '__main__':
+    # Get port from environment variable or use default
+    port = int(os.environ.get('PORT', 5002))
+
+    # Use 0.0.0.0 for cloud deployment, localhost for local dev
+    host = '0.0.0.0' if os.environ.get('RAILWAY_ENVIRONMENT') or os.environ.get('RENDER') else 'localhost'
+
     print("=" * 60)
     print("Edge TTS Server for BookReader")
     print("=" * 60)
     print(f"Cache directory: {CACHE_DIR}")
-    print("Server starting on http://localhost:5002")
+    print(f"Server starting on http://{host}:{port}")
     print("=" * 60)
     print("\nEndpoints:")
     print("  GET  /health       - Health check")
@@ -190,6 +196,6 @@ if __name__ == '__main__':
     from hypercorn.config import Config
 
     config = Config()
-    config.bind = ["localhost:5002"]
+    config.bind = [f"{host}:{port}"]
 
     asyncio.run(serve(app, config))
