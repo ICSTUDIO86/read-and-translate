@@ -4,7 +4,7 @@ import { Book } from '@/types/book';
 import * as localStorage from './storage';
 
 // Timeout helper to prevent long waits
-const withTimeout = <T>(promise: Promise<T>, timeoutMs: number = 3000): Promise<T> => {
+const withTimeout = <T>(promise: Promise<T>, timeoutMs: number = 5000): Promise<T> => {
   return Promise.race([
     promise,
     new Promise<T>((_, reject) =>
@@ -124,7 +124,7 @@ export const getAllReadingProgress = async (): Promise<ReadingProgress[]> => {
 
   try {
     // Use timeout to prevent long waits
-    const { data: { user } } = await withTimeout(supabase.auth.getUser(), 2000);
+    const { data: { user } } = await withTimeout(supabase.auth.getUser(), 3000);
     if (!user) {
       console.log('[Storage] Not authenticated, using localStorage for progress');
       return localProgress;
@@ -135,7 +135,7 @@ export const getAllReadingProgress = async (): Promise<ReadingProgress[]> => {
         .from('reading_progress')
         .select('*')
         .eq('user_id', user.id),
-      3000
+      5000
     );
 
     if (error) throw error;
@@ -203,8 +203,8 @@ export const getUploadedBooks = async (): Promise<Book[]> => {
   }
 
   try {
-    // Use timeout to prevent long waits (3 seconds max)
-    const { data: { user } } = await withTimeout(supabase.auth.getUser(), 2000);
+    // Use timeout to prevent long waits (5 seconds max)
+    const { data: { user } } = await withTimeout(supabase.auth.getUser(), 3000);
     if (!user) {
       console.log('[Storage] Not authenticated, using localStorage with', localBooks.length, 'books');
       return localBooks;
@@ -217,7 +217,7 @@ export const getUploadedBooks = async (): Promise<Book[]> => {
         .select('*')
         .eq('user_id', user.id)
         .order('uploaded_at', { ascending: false }),
-      3000
+      5000
     );
 
     if (error) throw error;
