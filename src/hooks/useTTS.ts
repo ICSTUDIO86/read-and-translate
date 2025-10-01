@@ -174,16 +174,13 @@ export const useTTS = () => {
       // Get TTS config
       const config = getTTSConfig();
 
-      // Detect language
-      const hasChinese = /[\u4e00-\u9fa5]/.test(text);
-
-      // Use appropriate Edge TTS voice based on language
-      const edgeVoice = hasChinese ? 'zh-CN-XiaoxiaoNeural' : 'en-US-AriaNeural';
+      // Get voice based on text language and user preferences
+      const { voice: selectedVoice } = getVoiceForText(text);
 
       // Prepare Edge TTS config
       const edgeConfig: EdgeTTSConfig = {
         serverUrl: config.edgeTTSServerUrl,
-        voice: edgeVoice,
+        voice: selectedVoice,
         rate: config.edgeTTSRate,
         pitch: config.edgeTTSPitch,
       };
