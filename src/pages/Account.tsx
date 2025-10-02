@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { User, Settings, Heart, Download, HelpCircle, LogOut, Languages, Volume2, Upload, Save, Database, Cloud, CloudOff, RefreshCw } from 'lucide-react';
+import { User, Settings, Heart, Download, HelpCircle, LogOut, Languages, Volume2, Upload, Save, Database, Cloud, CloudOff, RefreshCw, Trash2 } from 'lucide-react';
 import BottomNav from '@/components/BottomNav';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,6 +13,7 @@ import { downloadAllData, importFromFile, exportAllData } from '@/lib/supabaseSt
 import { useAuth } from '@/hooks/useAuth';
 import { useCloudSync } from '@/hooks/useCloudSync';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
+import { removeDuplicateBooks } from '@/lib/cleanupDuplicates';
 import { AuthForm } from '@/components/AuthForm';
 import {
   Dialog,
@@ -134,6 +135,24 @@ const Account = () => {
   const handleRefreshCloudStatus = async () => {
     const status = await checkCloudStatus();
     setCloudStatus(status);
+  };
+
+  const handleCleanupDuplicates = async () => {
+    try {
+      console.log('[Account] Starting duplicate cleanup...');
+      const result = await removeDuplicateBooks();
+      toast.success(`Cleanup complete! Kept ${result.kept} books, removed ${result.removed} duplicates.`);
+
+      // Refresh cloud status
+      const status = await checkCloudStatus();
+      setCloudStatus(status);
+
+      // Reload page to refresh book list
+      setTimeout(() => window.location.reload(), 2000);
+    } catch (error) {
+      console.error('[Account] Failed to cleanup duplicates:', error);
+      toast.error('Failed to cleanup duplicates');
+    }
   };
 
   return (
@@ -705,6 +724,16 @@ const Account = () => {
                     >
                       <RefreshCw className="h-3 w-3 mr-2" />
                       Refresh Status
+                    </Button>
+
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                      onClick={handleCleanupDuplicates}
+                    >
+                      <Trash2 className="h-3 w-3 mr-2" />
+                      Remove Duplicate Books
                     </Button>
                   </div>
 
