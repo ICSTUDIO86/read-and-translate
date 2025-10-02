@@ -2,6 +2,7 @@
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 import { Book } from '@/types/book';
 import * as localStorage from './storage';
+import * as bookStorage from './bookStorage';
 
 // Timeout helper to prevent long waits
 const withTimeout = <T>(promise: Promise<T>, timeoutMs: number = 5000): Promise<T> => {
@@ -157,13 +158,13 @@ export const getAllReadingProgress = async (): Promise<ReadingProgress[]> => {
 
 // Uploaded Books
 export const saveUploadedBook = async (book: Book): Promise<void> => {
-  // ALWAYS save to localStorage first for immediate availability
-  localStorage.saveUploadedBook(book);
-  console.log('[Storage] ✓ Saved book to localStorage:', book.title);
+  // ALWAYS save to IndexedDB first for immediate availability (no size limit!)
+  await bookStorage.saveUploadedBook(book);
+  console.log('[Storage] ✓ Saved book to IndexedDB:', book.title);
 
   // If Supabase not configured, we're done
   if (!isSupabaseConfigured()) {
-    console.log('[Storage] Supabase not configured, localStorage only');
+    console.log('[Storage] Supabase not configured, IndexedDB only');
     return;
   }
 
@@ -192,21 +193,21 @@ export const saveUploadedBook = async (book: Book): Promise<void> => {
 
     console.log('[Storage] ✓ Synced book to Supabase:', book.title);
   } catch (error) {
-    console.warn('[Storage] ✗ Failed to sync book to cloud (saved locally):', error);
-    // Book is already saved to localStorage, so this is not critical
+    console.warn('[Storage] ✗ Failed to sync book to cloud (saved to IndexedDB):', error);
+    // Book is already saved to IndexedDB, so this is not critical
   }
 };
 
 export const saveBook = saveUploadedBook; // Alias
 
 export const getUploadedBooks = async (): Promise<Book[]> => {
-  // Always try localStorage first for instant response
-  const localBooks = localStorage.getUploadedBooks();
-  console.log('[Storage] getUploadedBooks - localStorage has:', localBooks.length, 'books');
+  // Always try IndexedDB first for instant response
+  const localBooks = await bookStorage.getUploadedBooks();
+  console.log('[Storage] getUploadedBooks - IndexedDB has:', localBooks.length, 'books');
 
   // If Supabase not configured, return local books immediately
   if (!isSupabaseConfigured()) {
-    console.log('[Storage] Supabase not configured, returning localStorage books');
+    console.log('[Storage] Supabase not configured, returning IndexedDB books');
     return localBooks;
   }
 
@@ -214,7 +215,7 @@ export const getUploadedBooks = async (): Promise<Book[]> => {
     // Use timeout to prevent long waits (5 seconds max)
     const { data: { user } } = await withTimeout(supabase.auth.getUser(), 3000);
     if (!user) {
-      console.log('[Storage] Not authenticated, using localStorage with', localBooks.length, 'books');
+      console.log('[Storage] Not authenticated, using IndexedDB with', localBooks.length, 'books');
       return localBooks;
     }
 
@@ -247,27 +248,36 @@ export const getUploadedBooks = async (): Promise<Book[]> => {
 
     console.log('[Storage] ✓ Loaded', cloudBooks.length, 'books from Supabase');
 
-    // If cloud has books but localStorage doesn't, save to localStorage
+    // If cloud has books but IndexedDB doesn't, save to IndexedDB
     if (cloudBooks.length > 0 && localBooks.length === 0) {
-      console.log('[Storage] Syncing cloud books to localStorage');
-      cloudBooks.forEach(book => localStorage.saveUploadedBook(book));
+      console.log('[Storage] Syncing cloud books to IndexedDB');
+      for (const book of cloudBooks) {
+        await bookStorage.saveUploadedBook(book);
+      }
     }
 
     return cloudBooks;
   } catch (error) {
-    console.warn('[Storage] ✗ Failed to get books from Supabase, using localStorage with', localBooks.length, 'books:', error);
+    console.warn('[Storage] ✗ Failed to get books from Supabase, using IndexedDB with', localBooks.length, 'books:', error);
     return localBooks;
   }
 };
 
 export const deleteUploadedBook = async (bookId: string): Promise<void> => {
+  // Always delete from IndexedDB first
+  await bookStorage.deleteUploadedBook(bookId);
+
   if (!isSupabaseConfigured()) {
-    return localStorage.deleteUploadedBook(bookId);
+    console.log('[Storage] Supabase not configured, deleted from IndexedDB only');
+    return;
   }
 
   try {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('Not authenticated');
+    if (!user) {
+      console.log('[Storage] Not authenticated, deleted from IndexedDB only');
+      return;
+    }
 
     const { error } = await supabase
       .from('books')
@@ -277,12 +287,10 @@ export const deleteUploadedBook = async (bookId: string): Promise<void> => {
 
     if (error) throw error;
 
-    // Also delete from localStorage
-    localStorage.deleteUploadedBook(bookId);
+    console.log('[Storage] ✓ Deleted book from both IndexedDB and Supabase');
   } catch (error) {
-    console.error('Failed to delete book from cloud:', error);
-    // Fallback to localStorage
-    localStorage.deleteUploadedBook(bookId);
+    console.warn('[Storage] ✗ Failed to delete book from cloud (deleted from IndexedDB):', error);
+    // Book is already deleted from IndexedDB, cloud deletion is optional
   }
 };
 

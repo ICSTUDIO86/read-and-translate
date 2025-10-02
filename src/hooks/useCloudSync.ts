@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabaseClient';
 import * as localStorage from '@/lib/storage';
+import * as bookStorage from '@/lib/bookStorage';
 
 export const useCloudSync = () => {
   const [syncing, setSyncing] = useState(false);
@@ -21,7 +22,7 @@ export const useCloudSync = () => {
       if (!user) throw new Error('Not authenticated');
 
       // Get all local data
-      const books = localStorage.getUploadedBooks();
+      const books = await bookStorage.getUploadedBooks();
       const readingProgress = localStorage.getAllReadingProgress();
       const favorites = localStorage.getFavorites();
       const readerSettings = localStorage.getReaderSettings();
@@ -255,7 +256,7 @@ export const useCloudSync = () => {
               chapters: book.chapters || [],
             };
             console.log(`[CloudSync] Book ${book.title} has ${bookToSave.chapters?.length || 0} chapters`);
-            localStorage.saveUploadedBook(bookToSave);
+            await bookStorage.saveUploadedBook(bookToSave);
             savedCount++;
             console.log(`[CloudSync] ✓ [${savedCount}/${booksData.length}] Saved:`, book.title);
           } catch (saveError) {
@@ -321,10 +322,11 @@ export const useCloudSync = () => {
       }
 
       // Check how many items are in the cloud
-      const [booksResult, progressResult, favoritesResult] = await Promise.all([
+      const [booksResult, progressResult, favoritesResult, localBooks] = await Promise.all([
         supabase.from('books').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
         supabase.from('reading_progress').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
         supabase.from('favorites').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
+        bookStorage.getUploadedBooks(),
       ]);
 
       return {
@@ -333,7 +335,7 @@ export const useCloudSync = () => {
         cloudBooks: booksResult.count || 0,
         cloudProgress: progressResult.count || 0,
         cloudFavorites: favoritesResult.count || 0,
-        localBooks: localStorage.getUploadedBooks().length,
+        localBooks: localBooks.length,
         localProgress: localStorage.getAllReadingProgress().length,
         localFavorites: localStorage.getFavorites().length,
       };
