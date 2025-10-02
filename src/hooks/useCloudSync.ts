@@ -131,19 +131,55 @@ export const useCloudSync = () => {
 
       console.log('[CloudSync] User authenticated:', user.id);
 
-      // Download books
-      const { data: booksData, error: booksError } = await supabase
+      // Download books metadata first (without chapters to avoid 500 error)
+      console.log('[CloudSync] Fetching books metadata...');
+      const { data: booksMetadata, error: metadataError } = await supabase
         .from('books')
-        .select('*')
+        .select('id, title, author, cover_url, uploaded_at, updated_at')
         .eq('user_id', user.id);
 
-      if (booksError) {
-        console.error('[CloudSync] Error fetching books:', booksError);
-        throw booksError;
+      if (metadataError) {
+        console.error('[CloudSync] Error fetching books metadata:', {
+          message: metadataError.message,
+          details: metadataError.details,
+          hint: metadataError.hint,
+          code: metadataError.code,
+        });
+        throw new Error(`Failed to fetch books: ${metadataError.message}`);
       }
 
-      console.log('[CloudSync] Downloaded books from cloud:', booksData?.length || 0);
-      setProgress(25);
+      console.log('[CloudSync] Downloaded', booksMetadata?.length || 0, 'books metadata');
+
+      // Now fetch chapters one by one
+      const booksData = [];
+      if (booksMetadata && booksMetadata.length > 0) {
+        for (let i = 0; i < booksMetadata.length; i++) {
+          const meta = booksMetadata[i];
+          console.log(`[CloudSync] Fetching chapters for: ${meta.title}`);
+
+          const { data: bookWithChapters, error: chapterError } = await supabase
+            .from('books')
+            .select('chapters')
+            .eq('id', meta.id)
+            .single();
+
+          if (chapterError) {
+            console.error(`[CloudSync] Error fetching chapters for ${meta.title}:`, chapterError);
+            // Continue with other books even if one fails
+            continue;
+          }
+
+          booksData.push({
+            ...meta,
+            chapters: bookWithChapters?.chapters || []
+          });
+
+          setProgress(25 + (i / booksMetadata.length) * 20); // 25-45%
+        }
+      }
+
+      console.log('[CloudSync] Successfully downloaded', booksData.length, 'complete books');
+      setProgress(45);
 
       // Download reading progress
       const { data: progressData, error: progressError } = await supabase
@@ -156,7 +192,7 @@ export const useCloudSync = () => {
       }
 
       console.log('[CloudSync] Downloaded reading progress:', progressData?.length || 0);
-      setProgress(50);
+      setProgress(60);
 
       // Download favorites
       const { data: favoritesData, error: favoritesError } = await supabase
@@ -169,7 +205,7 @@ export const useCloudSync = () => {
       }
 
       console.log('[CloudSync] Downloaded favorites:', favoritesData?.length || 0);
-      setProgress(75);
+      setProgress(80);
 
       // Download user settings
       const { data: settingsData, error: settingsError } = await supabase
@@ -181,6 +217,8 @@ export const useCloudSync = () => {
       if (settingsError && settingsError.code !== 'PGRST116') {
         console.error('[CloudSync] Error fetching settings:', settingsError);
       }
+
+      setProgress(90);
 
       // Save to localStorage
       console.log('[CloudSync] Saving books to localStorage...');
