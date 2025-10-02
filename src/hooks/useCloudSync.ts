@@ -124,58 +124,91 @@ export const useCloudSync = () => {
       setProgress(0);
       setError(null);
 
+      console.log('[CloudSync] Starting download from cloud...');
+
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
+      console.log('[CloudSync] User authenticated:', user.id);
+
       // Download books
-      const { data: booksData } = await supabase
+      const { data: booksData, error: booksError } = await supabase
         .from('books')
         .select('*')
         .eq('user_id', user.id);
 
+      if (booksError) {
+        console.error('[CloudSync] Error fetching books:', booksError);
+        throw booksError;
+      }
+
+      console.log('[CloudSync] Downloaded books from cloud:', booksData?.length || 0);
       setProgress(25);
 
       // Download reading progress
-      const { data: progressData } = await supabase
+      const { data: progressData, error: progressError } = await supabase
         .from('reading_progress')
         .select('*')
         .eq('user_id', user.id);
 
+      if (progressError) {
+        console.error('[CloudSync] Error fetching progress:', progressError);
+      }
+
+      console.log('[CloudSync] Downloaded reading progress:', progressData?.length || 0);
       setProgress(50);
 
       // Download favorites
-      const { data: favoritesData } = await supabase
+      const { data: favoritesData, error: favoritesError } = await supabase
         .from('favorites')
         .select('book_id')
         .eq('user_id', user.id);
 
+      if (favoritesError) {
+        console.error('[CloudSync] Error fetching favorites:', favoritesError);
+      }
+
+      console.log('[CloudSync] Downloaded favorites:', favoritesData?.length || 0);
       setProgress(75);
 
       // Download user settings
-      const { data: settingsData } = await supabase
+      const { data: settingsData, error: settingsError } = await supabase
         .from('user_settings')
         .select('*')
         .eq('user_id', user.id)
         .single();
 
+      if (settingsError && settingsError.code !== 'PGRST116') {
+        console.error('[CloudSync] Error fetching settings:', settingsError);
+      }
+
       // Save to localStorage
-      if (booksData) {
+      console.log('[CloudSync] Saving books to localStorage...');
+      if (booksData && booksData.length > 0) {
         booksData.forEach(book => {
-          localStorage.saveUploadedBook({
-            id: book.id,
-            title: book.title,
-            author: book.author || 'Unknown',
-            cover: book.cover_url || `https://via.placeholder.com/400x600/f59e0b/ffffff?text=${encodeURIComponent(book.title.substring(0, 20))}`,
-            rating: 0,
-            pages: 0,
-            language: 'English',
-            audioLength: '0h0m',
-            genre: 'Uploaded',
-            synopsis: '',
-            isFree: true,
-            chapters: book.chapters,
-          });
+          console.log('[CloudSync] Saving book:', book.title);
+          try {
+            localStorage.saveUploadedBook({
+              id: book.id,
+              title: book.title,
+              author: book.author || 'Unknown',
+              cover: book.cover_url || `https://via.placeholder.com/400x600/f59e0b/ffffff?text=${encodeURIComponent(book.title.substring(0, 20))}`,
+              rating: 0,
+              pages: 0,
+              language: 'English',
+              audioLength: '0h0m',
+              genre: 'Uploaded',
+              synopsis: '',
+              isFree: true,
+              chapters: book.chapters,
+            });
+            console.log('[CloudSync] ✓ Saved book to localStorage:', book.title);
+          } catch (saveError) {
+            console.error('[CloudSync] ✗ Failed to save book:', book.title, saveError);
+          }
         });
+      } else {
+        console.log('[CloudSync] No books to save');
       }
 
       if (progressData) {

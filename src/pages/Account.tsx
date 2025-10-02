@@ -120,11 +120,14 @@ const Account = () => {
 
   const handleDownloadFromCloud = async () => {
     try {
+      console.log('[Account] Starting cloud download...');
       const result = await downloadCloudDataToLocal();
+      console.log('[Account] Download completed:', result);
       toast.success(`Downloaded ${result.booksDownloaded} books from cloud!`);
       setTimeout(() => window.location.reload(), 2000);
     } catch (error) {
-      toast.error('Failed to download from cloud');
+      console.error('[Account] Failed to download from cloud:', error);
+      toast.error(`Failed to download from cloud: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
