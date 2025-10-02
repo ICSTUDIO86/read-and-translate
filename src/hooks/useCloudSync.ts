@@ -153,9 +153,10 @@ export const useCloudSync = () => {
       // Now fetch chapters one by one
       const booksData = [];
       if (booksMetadata && booksMetadata.length > 0) {
+        console.log(`[CloudSync] Fetching chapters for ${booksMetadata.length} books...`);
         for (let i = 0; i < booksMetadata.length; i++) {
           const meta = booksMetadata[i];
-          console.log(`[CloudSync] Fetching chapters for: ${meta.title}`);
+          console.log(`[CloudSync] [${i + 1}/${booksMetadata.length}] Fetching chapters for: ${meta.title}`);
 
           const { data: bookWithChapters, error: chapterError } = await supabase
             .from('books')
@@ -164,17 +165,28 @@ export const useCloudSync = () => {
             .single();
 
           if (chapterError) {
-            console.error(`[CloudSync] Error fetching chapters for ${meta.title}:`, chapterError);
-            // Continue with other books even if one fails
+            console.error(`[CloudSync] ✗ Error fetching chapters for ${meta.title}:`, {
+              message: chapterError.message,
+              code: chapterError.code,
+              details: chapterError.details
+            });
+            // Still add the book but with empty chapters
+            booksData.push({
+              ...meta,
+              chapters: []
+            });
             continue;
           }
+
+          const chaptersCount = Array.isArray(bookWithChapters?.chapters) ? bookWithChapters.chapters.length : 0;
+          console.log(`[CloudSync] ✓ [${i + 1}/${booksMetadata.length}] Got ${chaptersCount} chapters for: ${meta.title}`);
 
           booksData.push({
             ...meta,
             chapters: bookWithChapters?.chapters || []
           });
 
-          setProgress(25 + (i / booksMetadata.length) * 20); // 25-45%
+          setProgress(25 + ((i + 1) / booksMetadata.length) * 20); // 25-45%
         }
       }
 
@@ -221,12 +233,14 @@ export const useCloudSync = () => {
       setProgress(90);
 
       // Save to localStorage
-      console.log('[CloudSync] Saving books to localStorage...');
+      console.log('[CloudSync] Saving', booksData.length, 'books to localStorage...');
+      let savedCount = 0;
       if (booksData && booksData.length > 0) {
-        booksData.forEach(book => {
-          console.log('[CloudSync] Saving book:', book.title);
+        for (let i = 0; i < booksData.length; i++) {
+          const book = booksData[i];
+          console.log(`[CloudSync] [${i + 1}/${booksData.length}] Saving book:`, book.title);
           try {
-            localStorage.saveUploadedBook({
+            const bookToSave = {
               id: book.id,
               title: book.title,
               author: book.author || 'Unknown',
@@ -238,16 +252,20 @@ export const useCloudSync = () => {
               genre: 'Uploaded',
               synopsis: '',
               isFree: true,
-              chapters: book.chapters,
-            });
-            console.log('[CloudSync] ✓ Saved book to localStorage:', book.title);
+              chapters: book.chapters || [],
+            };
+            console.log(`[CloudSync] Book ${book.title} has ${bookToSave.chapters?.length || 0} chapters`);
+            localStorage.saveUploadedBook(bookToSave);
+            savedCount++;
+            console.log(`[CloudSync] ✓ [${savedCount}/${booksData.length}] Saved:`, book.title);
           } catch (saveError) {
-            console.error('[CloudSync] ✗ Failed to save book:', book.title, saveError);
+            console.error(`[CloudSync] ✗ Failed to save book ${book.title}:`, saveError);
           }
-        });
+        }
       } else {
         console.log('[CloudSync] No books to save');
       }
+      console.log(`[CloudSync] Saved ${savedCount} out of ${booksData.length} books to localStorage`);
 
       if (progressData) {
         progressData.forEach(p => {

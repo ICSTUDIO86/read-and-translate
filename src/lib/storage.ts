@@ -200,15 +200,25 @@ export const saveUploadedBook = (book: Book): void => {
     const books = getUploadedBooks();
     const existingIndex = books.findIndex(b => b.id === book.id);
 
+    console.log('[localStorage] Before save:', {
+      bookTitle: book.title,
+      currentCount: books.length,
+      isUpdate: existingIndex >= 0
+    });
+
     if (existingIndex >= 0) {
       books[existingIndex] = book;
+      console.log('[localStorage] Updated existing book at index', existingIndex);
     } else {
       books.push(book);
+      console.log('[localStorage] Added new book, total now:', books.length);
     }
 
     localStorage.setItem(STORAGE_KEYS.UPLOADED_BOOKS, JSON.stringify(books));
+    console.log('[localStorage] ✓ Saved to localStorage, total books:', books.length);
   } catch (error) {
-    console.error('Failed to save uploaded book:', error);
+    console.error('[localStorage] ✗ Failed to save uploaded book:', error);
+    throw error; // Re-throw to be caught by caller
   }
 };
 
