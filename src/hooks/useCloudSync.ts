@@ -164,8 +164,15 @@ export const useCloudSync = () => {
           localStorage.saveUploadedBook({
             id: book.id,
             title: book.title,
-            author: book.author || undefined,
-            coverUrl: book.cover_url || undefined,
+            author: book.author || 'Unknown',
+            cover: book.cover_url || `https://via.placeholder.com/400x600/f59e0b/ffffff?text=${encodeURIComponent(book.title.substring(0, 20))}`,
+            rating: 0,
+            pages: 0,
+            language: 'English',
+            audioLength: '0h0m',
+            genre: 'Uploaded',
+            synopsis: '',
+            isFree: true,
             chapters: book.chapters,
           });
         });
