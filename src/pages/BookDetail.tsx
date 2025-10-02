@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Share2, BookOpen, Play, Pause, ChevronLeft, ChevronRight, Volume2, Languages, Edit } from 'lucide-react';
+import { ArrowLeft, BookOpen, Volume2, Languages, Edit } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
@@ -14,9 +14,6 @@ const BookDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [progress, setProgress] = useState(0);
   const [showTranslation, setShowTranslation] = useState(false);
   const [isReading, setIsReading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -62,49 +59,16 @@ const BookDetail = () => {
   const isUploadedBook = true;
 
   const book = currentBook;
-  const totalPages = book.pages;
-
-  const handlePlayPause = () => {
-    setIsPlaying(!isPlaying);
-    
-    if (!isPlaying) {
-      toast.success('开始AI朗读', {
-        description: '使用先进的AI技术为您朗读内容',
-      });
-    } else {
-      toast.info('已暂停朗读');
-    }
-  };
 
   const handleTranslate = () => {
     setShowTranslation(!showTranslation);
-    
+
     if (!showTranslation) {
       toast.success('翻译功能已启用', {
         description: '内容将被翻译成中文',
       });
     } else {
       toast.info('已关闭翻译');
-    }
-  };
-
-  const handleProgressChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newProgress = Number(e.target.value);
-    setProgress(newProgress);
-    setCurrentPage(Math.floor((newProgress / 100) * totalPages) + 1);
-  };
-
-  const goToPrevPage = () => {
-    if (currentPage > 1) {
-      setCurrentPage(currentPage - 1);
-      setProgress(((currentPage - 2) / totalPages) * 100);
-    }
-  };
-
-  const goToNextPage = () => {
-    if (currentPage < totalPages) {
-      setCurrentPage(currentPage + 1);
-      setProgress((currentPage / totalPages) * 100);
     }
   };
 
@@ -248,74 +212,6 @@ const BookDetail = () => {
           </div>
         </div>
 
-        {/* Audio Player */}
-        <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border">
-          <div className="max-w-2xl mx-auto px-4 py-4">
-            {/* Progress Bar */}
-            <div className="flex items-center gap-3 mb-4">
-              <button 
-                className="p-2 hover:bg-secondary rounded-lg transition-colors"
-                onClick={handlePlayPause}
-              >
-                <Volume2 className="h-4 w-4 text-primary" />
-              </button>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={progress}
-                onChange={handleProgressChange}
-                className="flex-1 h-1 bg-secondary rounded-full appearance-none cursor-pointer
-                  [&::-webkit-slider-thumb]:appearance-none 
-                  [&::-webkit-slider-thumb]:w-3 
-                  [&::-webkit-slider-thumb]:h-3 
-                  [&::-webkit-slider-thumb]:rounded-full 
-                  [&::-webkit-slider-thumb]:bg-primary
-                  [&::-webkit-slider-thumb]:cursor-pointer"
-              />
-              <span className="text-sm text-muted-foreground min-w-[60px] text-right">
-                {book.audioLength}
-              </span>
-            </div>
-
-            {/* Controls */}
-            <div className="flex items-center justify-center gap-4">
-              <button 
-                onClick={goToPrevPage}
-                className="p-3 bg-primary/10 rounded-full hover:bg-primary/20 transition-colors"
-              >
-                <ChevronLeft className="h-5 w-5 text-primary" />
-              </button>
-              
-              <button 
-                onClick={handlePlayPause}
-                className="p-4 bg-primary rounded-full hover:bg-primary/90 transition-all shadow-lg"
-              >
-                {isPlaying ? (
-                  <Pause className="h-6 w-6 text-primary-foreground" />
-                ) : (
-                  <Play className="h-6 w-6 text-primary-foreground ml-0.5" />
-                )}
-              </button>
-
-              <button 
-                onClick={goToNextPage}
-                className="p-3 bg-primary/10 rounded-full hover:bg-primary/20 transition-colors"
-              >
-                <ChevronRight className="h-5 w-5 text-primary" />
-              </button>
-            </div>
-
-            {/* Page Indicator */}
-            <div className="text-center mt-3">
-              <span className="text-sm font-medium text-foreground">
-                {currentPage} / {totalPages}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <div className="h-52"></div>
       </div>
 
       {/* Edit Dialog */}
