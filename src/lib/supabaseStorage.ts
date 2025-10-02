@@ -157,13 +157,23 @@ export const getAllReadingProgress = async (): Promise<ReadingProgress[]> => {
 
 // Uploaded Books
 export const saveUploadedBook = async (book: Book): Promise<void> => {
+  // ALWAYS save to localStorage first for immediate availability
+  localStorage.saveUploadedBook(book);
+  console.log('[Storage] ✓ Saved book to localStorage:', book.title);
+
+  // If Supabase not configured, we're done
   if (!isSupabaseConfigured()) {
-    return localStorage.saveUploadedBook(book);
+    console.log('[Storage] Supabase not configured, localStorage only');
+    return;
   }
 
+  // Try to sync to cloud in background (non-blocking)
   try {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('Not authenticated');
+    if (!user) {
+      console.log('[Storage] Not authenticated, book saved locally only');
+      return;
+    }
 
     const { error } = await supabase
       .from('books')
@@ -180,12 +190,10 @@ export const saveUploadedBook = async (book: Book): Promise<void> => {
 
     if (error) throw error;
 
-    // Also save to localStorage as backup
-    localStorage.saveUploadedBook(book);
+    console.log('[Storage] ✓ Synced book to Supabase:', book.title);
   } catch (error) {
-    console.error('Failed to save book to cloud:', error);
-    // Fallback to localStorage
-    localStorage.saveUploadedBook(book);
+    console.warn('[Storage] ✗ Failed to sync book to cloud (saved locally):', error);
+    // Book is already saved to localStorage, so this is not critical
   }
 };
 
