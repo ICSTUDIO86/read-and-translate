@@ -9,6 +9,7 @@ interface TTSOptions {
   volume?: number;
   lang?: string;
   forceEngine?: 'web-speech' | 'edge-tts' | 'xtts'; // Override default engine
+  onComplete?: () => void; // Called when all speech (including queue) is finished
 }
 
 export const useTTS = () => {
@@ -32,6 +33,7 @@ export const useTTS = () => {
   const textQueueRef = useRef<string[]>([]);
   const currentTextRef = useRef<string>('');
   const wordTimingsRef = useRef<number[]>([]);
+  const onCompleteRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     // Check if Speech Synthesis API is supported
@@ -150,7 +152,14 @@ export const useTTS = () => {
         const nextText = textQueueRef.current.shift();
         if (nextText) {
           speak(nextText, options);
+          return;
         }
+      }
+
+      // All content finished, call onComplete callback
+      if (onCompleteRef.current) {
+        console.log('[TTS] All content finished, calling onComplete');
+        onCompleteRef.current();
       }
     };
 
@@ -272,6 +281,12 @@ export const useTTS = () => {
           setCurrentWordIndex(-1);
           setCurrentCharIndex(0);
           URL.revokeObjectURL(audioUrl);
+
+          // All content finished, call onComplete callback
+          if (onCompleteRef.current) {
+            console.log('[TTS] All content finished, calling onComplete');
+            onCompleteRef.current();
+          }
         };
 
         audio.onpause = () => {
@@ -416,6 +431,12 @@ export const useTTS = () => {
           setCurrentWordIndex(-1);
           setCurrentCharIndex(0);
           URL.revokeObjectURL(audioUrl);
+
+          // All content finished, call onComplete callback
+          if (onCompleteRef.current) {
+            console.log('[TTS] All content finished, calling onComplete');
+            onCompleteRef.current();
+          }
         };
 
         audio.onpause = () => {
@@ -465,6 +486,9 @@ export const useTTS = () => {
 
   const speak = useCallback((text: string, options: TTSOptions = {}) => {
     if (!text) return;
+
+    // Store onComplete callback
+    onCompleteRef.current = options.onComplete || null;
 
     // Determine which engine to use
     const config = getTTSConfig();

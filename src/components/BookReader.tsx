@@ -85,6 +85,7 @@ const BookReader = ({ book, onProgressChange, onClose }: BookReaderProps) => {
   const [readingParagraphIndex, setReadingParagraphIndex] = useState<number>(-1);
   const [paragraphCharOffsets, setParagraphCharOffsets] = useState<number[]>([]);
   const [readingStartOffset, setReadingStartOffset] = useState<number>(0); // Offset where reading started
+  const isAutoPlayingRef = useRef(false); // Track if auto-play is active
 
   const chapters = book.chapters || [];
   const currentChapter = chapters[currentChapterIndex];
@@ -185,6 +186,23 @@ const BookReader = ({ book, onProgressChange, onClose }: BookReaderProps) => {
   useEffect(() => {
     setCurrentPageInChapter(0);
   }, [settings.paragraphsPerPage]);
+
+  // Auto-play next page when page changes during auto-play mode
+  useEffect(() => {
+    if (!isAutoPlayingRef.current || !currentChapter || !currentChapter.paragraphs) {
+      return;
+    }
+
+    console.log('[BookReader] Auto-play: Page changed, starting TTS for new page...');
+
+    // Small delay to let the page render
+    const timer = setTimeout(() => {
+      // Re-trigger play for the new page
+      handlePlay();
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [currentChapterIndex, currentPageInChapter]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -420,7 +438,33 @@ const BookReader = ({ book, onProgressChange, onClose }: BookReaderProps) => {
 
       try {
         const lang = settings.ttsLanguage === 'translated' ? 'zh-CN' : 'en-US';
-        speak(textToRead, { lang, rate: 1.0 });
+
+        // Enable auto-play mode
+        isAutoPlayingRef.current = true;
+
+        // Auto-advance to next page when current page finishes reading
+        const handleTTSComplete = () => {
+          console.log('[BookReader] TTS completed current page, auto-advancing...');
+
+          // Check if there's a next page
+          if (currentPageInChapter < totalPagesInChapter - 1) {
+            // Next page in current chapter
+            setCurrentPageInChapter(prev => prev + 1);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          } else if (currentChapterIndex < chapters.length - 1) {
+            // Move to next chapter
+            setCurrentChapterIndex(prev => prev + 1);
+            setCurrentPageInChapter(0);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          } else {
+            // Reached the end of the book
+            console.log('[BookReader] Reached end of book');
+            isAutoPlayingRef.current = false;
+            toast.success('Finished reading the book!');
+          }
+        };
+
+        speak(textToRead, { lang, rate: 1.0, onComplete: handleTTSComplete });
         console.log('[BookReader] TTS started with engine:', currentEngine);
         toast.success('Started AI reading', {
           description: `Reading page ${currentPageInChapter + 1} with ${currentEngine === 'web-speech' ? 'Web Speech' : currentEngine}`,
@@ -436,6 +480,7 @@ const BookReader = ({ book, onProgressChange, onClose }: BookReaderProps) => {
 
   const handleStop = () => {
     stop();
+    isAutoPlayingRef.current = false; // Disable auto-play
     setReadingParagraphIndex(-1);
     setParagraphCharOffsets([]);
     setReadingStartOffset(0);
