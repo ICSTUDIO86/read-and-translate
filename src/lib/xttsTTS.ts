@@ -1,4 +1,8 @@
 // XTTS v2 API client for emotional, high-quality text-to-speech
+import { splitTextIntoChunks } from './textChunking';
+
+// Maximum text length for a single XTTS request (safe limit)
+export const MAX_XTTS_LENGTH = 800;
 
 export interface XTTSConfig {
   serverUrl: string; // XTTS server URL
@@ -178,6 +182,13 @@ export const generateXTTSSpeechWithCache = async (
   config?: XTTSConfig
 ): Promise<Blob> => {
   const xttsConfig = config || getXTTSConfig();
+
+  // Check if text is too long and needs chunking
+  if (text.length > MAX_XTTS_LENGTH) {
+    console.log(`[XTTS] Text too long (${text.length} chars), using chunked generation`);
+    return generateXTTSSpeechForLongText(text, xttsConfig);
+  }
+
   const cacheKey = generateXTTSCacheKey(text, xttsConfig);
 
   // Try to get from cache first
@@ -196,3 +207,171 @@ export const generateXTTSSpeechWithCache = async (
 
   return audioBlob;
 };
+
+/**
+ * Generate speech for long text by splitting into chunks
+ * Automatically handles text longer than XTTS limit
+ */
+export const generateXTTSSpeechForLongText = async (
+  text: string,
+  config?: XTTSConfig
+): Promise<Blob> => {
+  const xttsConfig = config || getXTTSConfig();
+
+  // Check cache for complete long text first
+  const cacheKey = generateXTTSCacheKey(text, xttsConfig);
+  const cachedAudio = await getCachedXTTSAudio(cacheKey);
+  if (cachedAudio) {
+    console.log('[XTTS] Using cached audio for long text:', text.substring(0, 50));
+    return cachedAudio;
+  }
+
+  // Split text into manageable chunks
+  const chunks = splitTextIntoChunks(text, MAX_XTTS_LENGTH);
+  console.log(`[XTTS] Split into ${chunks.length} chunks for processing`);
+
+  // Generate audio for each chunk
+  const audioBlobs: Blob[] = [];
+
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i];
+    console.log(`[XTTS] Generating chunk ${i + 1}/${chunks.length} (${chunk.text.length} chars)`);
+
+    try {
+      // Generate audio for this chunk
+      const chunkBlob = await generateXTTSSpeech(chunk.text, xttsConfig);
+      audioBlobs.push(chunkBlob);
+    } catch (error) {
+      console.error(`[XTTS] Failed to generate chunk ${i + 1}:`, error);
+      throw new Error(`Failed to generate audio chunk ${i + 1}/${chunks.length}: ${error}`);
+    }
+  }
+
+  // Merge all audio blobs
+  console.log(`[XTTS] Merging ${audioBlobs.length} audio chunks...`);
+  const mergedBlob = await mergeXTTSAudioBlobs(audioBlobs);
+
+  // Cache the complete merged audio
+  await cacheXTTSAudio(cacheKey, mergedBlob);
+  console.log('[XTTS] Long text audio generated and cached successfully');
+
+  return mergedBlob;
+};
+
+/**
+ * Merge multiple audio blobs into a single blob using Web Audio API
+ */
+async function mergeXTTSAudioBlobs(blobs: Blob[]): Promise<Blob> {
+  if (blobs.length === 0) {
+    throw new Error('No audio blobs to merge');
+  }
+
+  if (blobs.length === 1) {
+    return blobs[0];
+  }
+
+  try {
+    // Create audio context
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+
+    // Decode all audio blobs to AudioBuffers
+    const audioBuffers: AudioBuffer[] = [];
+
+    for (let i = 0; i < blobs.length; i++) {
+      const arrayBuffer = await blobs[i].arrayBuffer();
+      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+      audioBuffers.push(audioBuffer);
+    }
+
+    // Calculate total length
+    const totalLength = audioBuffers.reduce((sum, buffer) => sum + buffer.length, 0);
+    const sampleRate = audioBuffers[0].sampleRate;
+    const numberOfChannels = audioBuffers[0].numberOfChannels;
+
+    // Create a new buffer to hold the merged audio
+    const mergedBuffer = audioContext.createBuffer(
+      numberOfChannels,
+      totalLength,
+      sampleRate
+    );
+
+    // Copy all buffers into the merged buffer
+    let offset = 0;
+    for (const buffer of audioBuffers) {
+      for (let channel = 0; channel < numberOfChannels; channel++) {
+        const channelData = buffer.getChannelData(channel);
+        mergedBuffer.getChannelData(channel).set(channelData, offset);
+      }
+      offset += buffer.length;
+    }
+
+    // Convert merged buffer back to blob
+    const wavBlob = await audioBufferToWavBlob(mergedBuffer);
+
+    // Close audio context to free resources
+    await audioContext.close();
+
+    return wavBlob;
+  } catch (error) {
+    console.error('[XTTS] Audio merge failed:', error);
+    // Fallback: concatenate blobs directly
+    console.warn('[XTTS] Using fallback: direct blob concatenation');
+    return new Blob(blobs, { type: 'audio/wav' });
+  }
+}
+
+/**
+ * Convert AudioBuffer to WAV Blob
+ */
+async function audioBufferToWavBlob(audioBuffer: AudioBuffer): Promise<Blob> {
+  const numberOfChannels = audioBuffer.numberOfChannels;
+  const sampleRate = audioBuffer.sampleRate;
+  const format = 1; // PCM
+  const bitDepth = 16;
+
+  const bytesPerSample = bitDepth / 8;
+  const blockAlign = numberOfChannels * bytesPerSample;
+
+  const data = [];
+  for (let channel = 0; channel < numberOfChannels; channel++) {
+    data.push(audioBuffer.getChannelData(channel));
+  }
+
+  const dataLength = audioBuffer.length * numberOfChannels * bytesPerSample;
+  const buffer = new ArrayBuffer(44 + dataLength);
+  const view = new DataView(buffer);
+
+  // Write WAV header
+  const writeString = (offset: number, string: string) => {
+    for (let i = 0; i < string.length; i++) {
+      view.setUint8(offset + i, string.charCodeAt(i));
+    }
+  };
+
+  writeString(0, 'RIFF');
+  view.setUint32(4, 36 + dataLength, true);
+  writeString(8, 'WAVE');
+  writeString(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, format, true);
+  view.setUint16(22, numberOfChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * blockAlign, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, bitDepth, true);
+  writeString(36, 'data');
+  view.setUint32(40, dataLength, true);
+
+  // Write audio data
+  let offset = 44;
+  for (let i = 0; i < audioBuffer.length; i++) {
+    for (let channel = 0; channel < numberOfChannels; channel++) {
+      const sample = Math.max(-1, Math.min(1, data[channel][i]));
+      const int16 = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+      view.setInt16(offset, int16, true);
+      offset += 2;
+    }
+  }
+
+  return new Blob([buffer], { type: 'audio/wav' });
+}
